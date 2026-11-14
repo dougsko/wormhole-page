@@ -43,7 +43,6 @@ wormhole.page is a single binary (~5 MB) with zero external dependencies.
 
 ### One-click deploy
 
-[![Deploy on Fly.io](https://img.shields.io/badge/Deploy%20on-Fly.io-7b36ed?logo=fly-dot-io)](https://fly.io/docs/launch/fly-from-a-github-repo/?repo=lucamartinetti/wormhole-page)
 [![Deploy on Railway](https://img.shields.io/badge/Deploy%20on-Railway-0B0D0E?logo=railway)](https://railway.app/new/template?repo=lucamartinetti/wormhole-page)
 
 ### Podman (prebuilt image from GHCR)
