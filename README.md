@@ -145,7 +145,19 @@ wormhole-page-server [OPTIONS]
   --port PORT              Listen port (default: 8080, env: PORT)
   --static-dir DIR         Static files directory (default: static/, env: STATIC_DIR)
   --transit-relay ADDR     Upstream transit relay (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY)
+  --csp-connect-src SRC    CSP connect-src value (default: 'self' wss://relay.magic-wormhole.io:443, env: CSP_CONNECT_SRC)
 ```
+
+By default the Content-Security-Policy is byte-identical to the upstream app,
+`connect-src 'self' wss://relay.magic-wormhole.io:443`. If you want the web-UI settings
+modal to let visitors use arbitrary relays (as with this fork out of the box), loosen it:
+
+```
+CSP_CONNECT_SRC="'self' ws: wss:" wormhole-page-server
+```
+
+Any invalid `CSP_CONNECT_SRC` (leading/trailing whitespace, control characters) aborts
+startup with a clear error instead of silently serving a broken policy.
 
 #### Client-side overrides
 
@@ -156,6 +168,9 @@ redeploy needed. Click the **gear icon** (top-right, next to the theme toggle) a
 - **Transit relay** — WebSocket URL of the transit relay bridge
 
 Both accept `ws://` and `wss://` URLs and are validated on save (empty field = default).
+Note that the default `Content-Security-Policy` (matching upstream) only allows
+`wss://relay.magic-wormhole.io:443`; set `CSP_CONNECT_SRC="'self' ws: wss:"` on the
+server if visitors should be able to use arbitrary relays.
 The settings are stored in that browser's `localStorage` (`wormhole-settings`, nothing is
 sent to the server), apply to the next transfer, and can be cleared with **Reset to
 defaults**. A dot on the gear icon indicates custom relays are active.

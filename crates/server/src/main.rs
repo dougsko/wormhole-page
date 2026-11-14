@@ -32,6 +32,24 @@ struct Args {
         env = "TRANSIT_RELAY"
     )]
     transit_relay: String,
+
+    /// Value for the CSP `connect-src` directive (single-quoted sources, space-separated).
+    /// Default matches upstream wormhole.page; use "'self' ws: wss:" to allow any relay
+    /// for the browser client's mailbox/transit settings.
+    #[arg(
+        long,
+        default_value = "'self' wss://relay.magic-wormhole.io:443",
+        env = "CSP_CONNECT_SRC"
+    )]
+    csp_connect_src: String,
+}
+
+/// Build the full Content-Security-Policy from a connect-src value.
+fn build_csp(connect_src: &str) -> Option<HeaderValue> {
+    let csp = format!(
+        "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src {connect_src}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    );
+    HeaderValue::from_str(&csp).ok()
 }
 
 #[derive(Clone)]
@@ -39,6 +57,7 @@ struct AppState {
     index_html: Arc<String>,
     service_worker: Arc<String>,
     transit_relay: Arc<String>,
+    csp: HeaderValue,
     http_client: reqwest::Client,
 }
 
@@ -64,6 +83,13 @@ async fn main() {
         .unwrap_or_else(|e| panic!("Failed to read {}: {e}", sw_path.display()));
 
     let transit_relay = args.transit_relay;
+    let csp = build_csp(&args.csp_connect_src).unwrap_or_else(|| {
+        panic!(
+            "Invalid CSP_CONNECT_SRC {:?}: must be a valid header value \
+             (no leading/trailing whitespace or control characters)",
+            args.csp_connect_src
+        )
+    });
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -73,6 +99,7 @@ async fn main() {
         index_html: Arc::new(index_html),
         service_worker: Arc::new(service_worker),
         transit_relay: Arc::new(transit_relay.clone()),
+        csp,
         http_client,
     };
 
@@ -91,7 +118,10 @@ async fn main() {
         .nest_service("/static", static_service)
         // Root serves index.html
         .fallback(axum::routing::get(root_or_404))
-        .layer(axum::middleware::from_fn(security_headers))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            security_headers,
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
@@ -104,6 +134,7 @@ async fn main() {
 
 /// Middleware that adds security headers to every response.
 async fn security_headers(
+    State(state): State<AppState>,
     req: axum::http::Request<axum::body::Body>,
     next: axum::middleware::Next,
 ) -> impl IntoResponse {
@@ -111,7 +142,7 @@ async fn security_headers(
     let headers = response.headers_mut();
     headers.insert(
         HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_static("default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"),
+        state.csp.clone(),
     );
     headers.insert(
         HeaderName::from_static("x-content-type-options"),

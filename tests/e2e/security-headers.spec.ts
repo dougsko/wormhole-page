@@ -21,8 +21,8 @@ test.describe('Security headers', () => {
       expect(csp).toContain("style-src 'self' 'unsafe-inline'");
     });
 
-    test("connect-src allows 'self' and any ws:/wss: host (user-configurable relays)", () => {
-      expect(csp).toContain("connect-src 'self' ws: wss:");
+    test("connect-src matches upstream default ('self' + wss://relay.magic-wormhole.io:443)", () => {
+      expect(csp).toContain("connect-src 'self' wss://relay.magic-wormhole.io:443");
     });
 
     test("frame-ancestors 'none'", () => {

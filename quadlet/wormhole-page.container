@@ -39,6 +39,10 @@ PublishPort=8080:8080
 # Upstream transit relay for the WebSocket bridge (operator setting).
 # Point this at a self-hosted transit relay if you run one.
 Environment=TRANSIT_RELAY=transit.magic-wormhole.io:4001
+# Content-Security-Policy connect-src for the browser client. The default is
+# the upstream value ('self' wss://relay.magic-wormhole.io:443). Loosen it to
+# let visitors use arbitrary relays via the in-app settings gear:
+#Environment=CSP_CONNECT_SRC="'self' ws: wss:"
 # Hardening: the app reads only its static assets and makes outbound
 # WebSocket/TCP connections; it never writes to the filesystem.
 ReadOnly=true

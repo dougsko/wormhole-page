@@ -6,4 +6,5 @@ services:
     environment:
       - PORT=8080
       # - TRANSIT_RELAY=transit.magic-wormhole.io:4001
+      # - "CSP_CONNECT_SRC='self' ws: wss:"
     restart: unless-stopped
