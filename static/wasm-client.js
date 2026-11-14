@@ -9,6 +9,14 @@ let activeReceiver = null;
 // Verify a fetch response against a known SRI hash using Web Crypto API.
 // Returns the ArrayBuffer if verification passes, throws on mismatch.
 async function verifyIntegrity(buffer, expectedSri) {
+  // Web Crypto (crypto.subtle) is only available in secure contexts
+  // (https, localhost, 127.0.0.1). On plain http://<lan-ip> it is undefined,
+  // which would make every WASM load fail — degrade to the same fallback as
+  // the no-SRI/dev path instead of showing a bogus "unsupported browser".
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    console.warn('[wormhole] Web Crypto unavailable (insecure context); skipping WASM integrity check');
+    return buffer;
+  }
   if (!expectedSri || !expectedSri.startsWith('sha384-')) {
     console.warn('[wormhole] No valid SRI hash found, skipping integrity check');
     return buffer;
