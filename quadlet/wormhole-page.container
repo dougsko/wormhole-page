@@ -1,0 +1,55 @@
+# Quadlet unit for wormhole.page
+#
+# Runs the prebuilt GHCR image as a systemd service via Podman.
+#
+#   System-wide install:
+#     sudo cp quadlet/wormhole-page.container /etc/containers/systemd/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now wormhole-page.service
+#
+#   Rootless (per-user) install:
+#     mkdir -p ~/.config/containers/systemd
+#     cp quadlet/wormhole-page.container ~/.config/containers/systemd/
+#     systemctl --user daemon-reload
+#     systemctl --user enable --now wormhole-page.service
+#     (rootless also needs: loginctl enable-linger $USER)
+#
+# Logs:    journalctl -u wormhole-page.service -f
+# Updates: the image publishes `latest` on every push to main.
+#          AutoUpdate=registry + the podman auto-update timer picks it up:
+#            sudo systemctl enable --now podman-auto-update.timer
+#          (or: systemctl --user enable --now podman-auto-update.timer)
+#
+# Notes:
+#   - WantedBy=default.target works for both system and user managers.
+#   - Port 8080 is unprivileged, so rootless works unchanged.
+#   - PublishPort can be narrowed, e.g. 127.0.0.1:8080:8080, if you run it
+#     behind a reverse proxy.
+
+[Unit]
+Description=wormhole.page — E2E encrypted file transfer in the browser
+Documentation=https://github.com/dougsko/wormhole-page
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/dougsko/wormhole-page:latest
+ContainerName=wormhole-page
+PublishPort=8080:8080
+# Upstream transit relay for the WebSocket bridge (operator setting).
+# Point this at a self-hosted transit relay if you run one.
+Environment=TRANSIT_RELAY=transit.magic-wormhole.io:4001
+# Hardening: the app reads only its static assets and makes outbound
+# WebSocket/TCP connections; it never writes to the filesystem.
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+# Pull the newest image from GHCR when podman-auto-update.timer runs.
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

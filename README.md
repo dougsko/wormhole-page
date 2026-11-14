@@ -63,6 +63,38 @@ build, and `v1.2.3` tags (cut from a `v*` git tag) publish `1.2.3` + `latest`.
 > **Package settings** → **Change visibility** → Public. Otherwise authenticate first with
 > `echo $GITHUB_TOKEN | podman login ghcr.io -u <user> --password-stdin`.
 
+### Quadlet (systemd + Podman)
+
+A ready-made [quadlet](https://docs.quadlet.dev/en/latest/) unit is in
+[`quadlet/wormhole-page.container`](quadlet/wormhole-page.container). It runs the GHCR
+image as a systemd service with `Restart=always`, a read-only root filesystem,
+`no-new-privileges`, all capabilities dropped, and `AutoUpdate=registry` so the
+`podman-auto-update.timer` can roll out new images automatically.
+
+System-wide install:
+
+```bash
+sudo cp quadlet/wormhole-page.container /etc/containers/systemd/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wormhole-page.service
+sudo systemctl enable --now podman-auto-update.timer   # optional, for auto image updates
+```
+
+Rootless (per-user) install:
+
+```bash
+mkdir -p ~/.config/containers/systemd
+cp quadlet/wormhole-page.container ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user enable --now wormhole-page.service
+loginctl enable-linger $USER   # keep it running after logout
+```
+
+Logs: `journalctl -u wormhole-page.service -f` (or `journalctl --user -u ...`).
+Narrow the published port to `127.0.0.1:8080:8080` in the unit if you run behind a
+reverse proxy, and set `TRANSIT_RELAY` there to point the WebSocket bridge at your own
+upstream transit relay.
+
 ### Docker Compose
 
 ```bash
