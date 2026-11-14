@@ -47,8 +47,10 @@ wormhole.page is a single binary (~5 MB) with zero external dependencies.
 
 ### Podman (prebuilt image from GHCR)
 
-Every push to `main` and every `v*` tag builds a Podman/OCI image via GitHub Actions and
-pushes it to the GitHub Container Registry (see [`.github/workflows/image.yml`](.github/workflows/image.yml)):
+Every push to `main` and every `v*` tag builds a **multi-arch** Podman/OCI image
+(`linux/amd64` and `linux/arm64`, built natively on x86_64 and ARM runners) via GitHub
+Actions and pushes it to the GitHub Container Registry (see
+[`.github/workflows/image.yml`](.github/workflows/image.yml)):
 
 ```bash
 podman pull ghcr.io/dougsko/wormhole-page:latest
