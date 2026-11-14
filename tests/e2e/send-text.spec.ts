@@ -27,9 +27,8 @@ test.describe('Send text', () => {
 
     // Sender gets a code shown
     await expect(page.locator('#send-code-section')).toBeVisible({ timeout: 15000 });
-    const share = await page.locator('#send-code').textContent();
-    const code = share?.match(/receive\/([^/\s]+)/)?.[1];
-    expect(code).toBeTruthy();
+    const code = (await page.locator('#send-code').textContent())?.trim();
+    expect(code).toMatch(/^\d+-[a-z]+-[a-z]+$/);
 
     // Second tab receives via the share link — like a real recipient
     const receiver = await context.newPage();
@@ -49,8 +48,8 @@ test.describe('Send text', () => {
     await page.fill('#send-text-input', 'second-message-body');
     await page.click('#send-text-submit');
     await expect(page.locator('#send-code-section')).toBeVisible({ timeout: 15000 });
-    const share = await page.locator('#send-code').textContent();
-    const code = share?.match(/receive\/([^/\s]+)/)?.[1]!;
+    const code = (await page.locator('#send-code').textContent())?.trim()!;
+    expect(code).toMatch(/^\d+-[a-z]+-[a-z]+$/);
 
     const receiver = await context.newPage();
     await receiver.goto('/receive/' + code);

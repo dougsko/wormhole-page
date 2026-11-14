@@ -108,12 +108,10 @@ function getReceiveUrl() {
 }
 
 function updateCodeDisplay() {
+  // Always show the bare receive code; the Web/Wormhole tabs only change
+  // what the QR, Copy and Share buttons carry (URL vs code).
   const box = document.getElementById('send-code');
-  if (qrModeWeb) {
-    box.textContent = getReceiveUrl();
-  } else {
-    box.textContent = currentCode;
-  }
+  box.textContent = currentCode;
 }
 
 function setQrMode(web) {
