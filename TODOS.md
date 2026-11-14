@@ -7,23 +7,20 @@ Mitigates compromised-server attacks.
 - Effort: S
 - Depends on: WASM E2E encryption (must ship first)
 
-## P2: Configurable relay URLs — DONE (UI variant)
+## P2: Configurable relay URLs — DONE
 Mailbox and transit relay URLs are configurable per-user from the web UI
-(gear icon → Settings modal, stored in localStorage, ws:/wss:, format-checked).
-Defaults remain the public relays. See README "Client-side overrides".
-- Effort: S
-- Remaining gap: the WASM client unconditionally advertises the public TCP
-  relay (tcp://transit.magic-wormhole.io:4001) as an extra relay hint. With a
-  *custom* transit bridge, a CLI peer that picks that hint fails to meet the
-  browser. Fix: pass a peer-relay-hint override into the WASM `create()` and
-  rebuild `static/wasm/` (needs Rust toolchain). Track separately.
+(gear icon → Settings modal). The modal now offers a profile dropdown: the
+deployment default (server-generated `/config.js`, env-configured) or a
+"Custom (advanced)…" free-form override with format-checked URLs, a CLI-peer
+TCP hint field, and a Test connection button. localStorage schema v2 with
+transparent v1 migration. See README "Client-side overrides (the gear icon)".
 
-## P3: Custom transit relay hint for CLI peers (WASM rebuild)
-Add an optional peer-relay-hint argument to `WormholeSender/Receiver::create`
-(or a new exported setter), rebuild the committed WASM, and have wasm-client.js
-advertise only the configured transit URL when it differs from the default.
-- Effort: S-M
-- Depends on: Rust toolchain with wasm-pack
+## P3: Custom transit relay hint for CLI peers — DONE
+`WormholeSender/Receiver::create` take an optional `transit_peer_hint`
+(`Some(tcp://…)` overrides the advertised TCP hint, `Some("")` advertises the
+bridge only, `undefined`/omitted = public upstream relay). Wired from the
+Settings gear's TCP-hint field and the server's `WORMHOLE_TRANSIT_HINT` env
+(served at `/config.js`). wasm rebuilt and committed under `static/wasm/`.
 
 ## P3: Native text-offer interop (`wormhole/text-or-file-xfer`)
 The browser currently sends "text" as an in-memory `message.txt` file, which every

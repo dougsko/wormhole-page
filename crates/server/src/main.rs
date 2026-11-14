@@ -42,6 +42,28 @@ struct Args {
         env = "CSP_CONNECT_SRC"
     )]
     csp_connect_src: String,
+
+    /// Mailbox (rendezvous) relay URL to advertise to the browser as the
+    /// deployment default. Empty = built-in default (public Magic Wormhole
+    /// relay). Served to the client at /config.js.
+    #[arg(long, default_value = "", env = "WORMHOLE_MAILBOX_URL")]
+    mailbox_url: String,
+
+    /// Transit URL (WebSocket) to advertise as the deployment default.
+    /// Empty = same-origin /transit bridge. Served to the client at /config.js.
+    #[arg(long, default_value = "", env = "WORMHOLE_TRANSIT_URL")]
+    transit_url: String,
+
+    /// TCP relay hint advertised to the CLI peer by the WASM client.
+    /// Empty = advertise the public upstream relay (upstream default).
+    /// Served to the client at /config.js.
+    #[arg(long, default_value = "", env = "WORMHOLE_TRANSIT_HINT")]
+    transit_hint: String,
+
+    /// Display name for the deployment default shown in the Settings UI
+    /// (e.g. "wormhole.dougsko.com"). Empty = "Deployment default".
+    #[arg(long, default_value = "", env = "WORMHOLE_PROFILE_NAME")]
+    profile_name: String,
 }
 
 /// Build the full Content-Security-Policy from a connect-src value.
@@ -59,6 +81,7 @@ struct AppState {
     transit_relay: Arc<String>,
     csp: HeaderValue,
     http_client: reqwest::Client,
+    config_js: Arc<String>,
 }
 
 #[tokio::main]
@@ -71,6 +94,7 @@ async fn main() {
         .init();
 
     let args = Args::parse();
+    let config_js = build_config_js(&args);
 
     // Read index.html at startup for SPA fallback
     let index_path = args.static_dir.join("index.html");
@@ -101,6 +125,7 @@ async fn main() {
         transit_relay: Arc::new(transit_relay.clone()),
         csp,
         http_client,
+        config_js: Arc::new(config_js),
     };
 
     // Static file service
@@ -109,6 +134,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", axum::routing::get(health))
         .route("/sw.js", axum::routing::get(serve_sw))
+        .route("/config.js", axum::routing::get(serve_config_js))
         .route("/transit", axum::routing::get(transit_ws))
         .route("/a/script.js", axum::routing::get(analytics_script))
         .route("/a/api/send", axum::routing::post(analytics_event))
@@ -130,6 +156,38 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+/// Escape a string for inclusion as a JSON string literal (and thus a JS
+/// string literal). Only the characters JSON requires are escaped.
+fn js_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 8);
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Build the /config.js body from operator environment. Purely static —
+/// computed once at startup. Fields are always present; empty string =
+/// "not configured" (the client falls back to its built-in default).
+fn build_config_js(args: &Args) -> String {
+    format!(
+        "window.WORMHOLE_CONFIG = {{\"mailboxUrl\":\"{}\",\"transitUrl\":\"{}\",\"transitTcpHint\":\"{}\",\"profileName\":\"{}\"}};\n",
+        js_string(&args.mailbox_url),
+        js_string(&args.transit_url),
+        js_string(&args.transit_hint),
+        js_string(&args.profile_name),
+    )
 }
 
 /// Middleware that adds security headers to every response.
@@ -170,6 +228,25 @@ async fn security_headers(
 /// GET /health
 async fn health() -> &'static str {
     "ok"
+}
+
+/// GET /config.js — deployment configuration for the browser client.
+/// Generated once at startup from the operator's environment; never
+/// cacheable so changing the env takes effect on restart without a rebuild.
+async fn serve_config_js(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [
+            (
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_static("application/javascript; charset=utf-8"),
+            ),
+            (
+                HeaderName::from_static("cache-control"),
+                HeaderValue::from_static("no-store"),
+            ),
+        ],
+        state.config_js.as_str().to_string(),
+    )
 }
 
 /// GET /sw.js — serve the service worker from root scope with no-cache

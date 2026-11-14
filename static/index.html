@@ -203,20 +203,35 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <p class="settings-desc">Point this browser at different Magic Wormhole relays. Saved in this browser only &mdash; nothing is stored on the server.</p>
+    <p class="settings-desc">Choose which Magic Wormhole relays this browser uses. Saved in this browser only &mdash; nothing is stored on the server.</p>
     <div class="settings-field">
-      <label for="settings-mailbox-url">Mailbox (rendezvous) server</label>
-      <input type="url" id="settings-mailbox-url" autocomplete="off" spellcheck="false" placeholder="wss://relay.magic-wormhole.io:443/v1" aria-describedby="settings-error">
+      <label for="settings-profile">Relay infrastructure</label>
+      <select id="settings-profile" autocomplete="off" aria-describedby="settings-error"></select>
     </div>
-    <div class="settings-field">
-      <label for="settings-transit-url">Transit relay (WebSocket)</label>
-      <input type="url" id="settings-transit-url" autocomplete="off" spellcheck="false" placeholder="wss://&lt;host&gt;/transit" aria-describedby="settings-error">
+    <p class="settings-active" id="settings-active-summary"></p>
+    <div id="settings-custom-rows" class="hidden">
+      <div class="settings-field">
+        <label for="settings-mailbox-url">Mailbox (rendezvous) server</label>
+        <input type="url" id="settings-mailbox-url" autocomplete="off" spellcheck="false" placeholder="wss://relay.magic-wormhole.io:443/v1" aria-describedby="settings-error">
+      </div>
+      <div class="settings-field">
+        <label for="settings-transit-url">Transit relay (WebSocket)</label>
+        <input type="url" id="settings-transit-url" autocomplete="off" spellcheck="false" placeholder="wss://&lt;host&gt;/transit" aria-describedby="settings-error">
+      </div>
+      <div class="settings-field">
+        <label for="settings-transit-hint">Transit TCP hint (optional, for CLI peers)</label>
+        <input type="text" id="settings-transit-hint" autocomplete="off" spellcheck="false" placeholder="tcp://transit.example.com:4001" aria-describedby="settings-hint">
+      </div>
     </div>
     <p class="settings-error hidden" id="settings-error" role="alert"></p>
-    <p class="settings-hint">Leave a field empty to use the default server. ws:// and wss:// URLs only. Values apply to the next transfer.</p>
+    <p class="settings-hint" id="settings-hint">Empty fields fall back to the deployment default. ws:// and wss:// URLs only &mdash; on HTTPS pages the browser blocks plain ws:// relays. Values apply to the next transfer.</p>
     <div class="settings-actions">
-      <button class="btn-action" id="settings-reset">Reset to defaults</button>
+      <div class="settings-actions-left">
+        <button class="btn-action" id="settings-test">Test connection</button>
+        <span class="settings-test-result" id="settings-test-result" aria-live="polite"></span>
+      </div>
       <div class="settings-actions-right">
+        <button class="btn-action" id="settings-reset">Reset to defaults</button>
         <button class="btn-action" id="settings-cancel">Cancel</button>
         <button class="btn" id="settings-save">Save</button>
       </div>
@@ -224,6 +239,7 @@
   </div>
 </div>
 
+<script src="/config.js"></script>
 <script src="/static/qr.js"></script>
 <script src="/static/wasm-client.js"></script>
 <script src="/static/app.js"></script>

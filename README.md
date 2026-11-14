@@ -142,61 +142,76 @@ make run
 ```
 wormhole-page-server [OPTIONS]
 
-  --port PORT              Listen port (default: 8080, env: PORT)
-  --static-dir DIR         Static files directory (default: static/, env: STATIC_DIR)
-  --transit-relay ADDR     Upstream transit relay (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY)
-  --csp-connect-src SRC    CSP connect-src value (default: 'self' wss://relay.magic-wormhole.io:443, env: CSP_CONNECT_SRC)
+  --port PORT                 Listen port (default: 8080, env: PORT)
+  --static-dir DIR            Static files directory (default: static/, env: STATIC_DIR)
+  --transit-relay ADDR        Upstream transit relay (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY)
+  --csp-connect-src SRC       CSP connect-src value (default: 'self' wss://relay.magic-wormhole.io:443, env: CSP_CONNECT_SRC)
+  --mailbox-url URL           Deployment default mailbox relay (env: WORMHOLE_MAILBOX_URL)
+  --transit-url URL           Deployment default browser transit WS URL (env: WORMHOLE_TRANSIT_URL)
+  --transit-hint HINT         TCP hint advertised to CLI peers (env: WORMHOLE_TRANSIT_HINT)
+  --profile-name NAME         Display name of the deployment default in the Settings UI (env: WORMHOLE_PROFILE_NAME)
+```
+
+The `WORMHOLE_*` settings are served to the browser at **`/config.js`**, which the
+server generates at startup from its environment — no image rebuild, no mounts. The
+same container image works for every deployment; self-hosters just set env vars:
+
+```sh
+podman run -p 8080:8080 \
+  -e TRANSIT_RELAY=transit.example.com:4001 \
+  -e WORMHOLE_MAILBOX_URL=wss://mailbox.example.com/v1 \
+  -e WORMHOLE_TRANSIT_HINT=tcp://transit.example.com:4001 \
+  -e WORMHOLE_PROFILE_NAME=transit.example.com \
+  -e CSP_CONNECT_SRC="'self' wss://mailbox.example.com" \
+  ghcr.io/dougsko/wormhole-page:latest
 ```
 
 By default the Content-Security-Policy is byte-identical to the upstream app,
-`connect-src 'self' wss://relay.magic-wormhole.io:443`. If you want the web-UI settings
-modal to let visitors use arbitrary relays (as with this fork out of the box), loosen it:
+`connect-src 'self' wss://relay.magic-wormhole.io:443`. To let visitors point the
+settings UI at arbitrary relays, loosen it:
 
 ```
 CSP_CONNECT_SRC="'self' ws: wss:" wormhole-page-server
 ```
 
 Any invalid `CSP_CONNECT_SRC` (leading/trailing whitespace, control characters) aborts
-startup with a clear error instead of silently serving a broken policy.
+startup with a clear error instead of silently serving a broken policy. Note that on
+HTTPS pages browsers block `ws://` entirely (mixed content) — only `wss://` relays work
+for HTTPS visitors regardless of CSP.
 
-#### Client-side overrides
+#### Client-side overrides (the gear icon)
 
-Visitors can point their own browser at different relays from the web UI — no rebuild or
-redeploy needed. Click the **gear icon** (top-right, next to the theme toggle) and set:
+Click the **gear icon** (top-right, next to the theme toggle). Visitors choose:
 
-- **Mailbox (rendezvous) server** — used for the SPAKE2 key exchange
-- **Transit relay** — WebSocket URL of the transit relay bridge
+- **<profile name> (default)** — the deployment's configured infrastructure
+  (or, when the deployment sets nothing, the public Magic Wormhole relay).
+- **Custom (advanced)…** — free-form **Mailbox (rendezvous) server**,
+  **Transit relay (WebSocket)** and an optional **Transit TCP hint** (the TCP relay
+  address advertised to CLI peers, e.g. `tcp://transit.example.com:4001`; defaults to
+  the public upstream relay). A **Test connection** button opens a WebSocket to the
+  effective mailbox URL and reports whether the handshake succeeds.
 
-Both accept `ws://` and `wss://` URLs and are validated on save (empty field = default).
-Note that the default `Content-Security-Policy` (matching upstream) only allows
-`wss://relay.magic-wormhole.io:443`; set `CSP_CONNECT_SRC="'self' ws: wss:"` on the
-server if visitors should be able to use arbitrary relays.
-The settings are stored in that browser's `localStorage` (`wormhole-settings`, nothing is
-sent to the server), apply to the next transfer, and can be cleared with **Reset to
-defaults**. A dot on the gear icon indicates custom relays are active.
+Both relay URLs accept `ws://` and `wss://` URLs and are validated on save (empty field
+= deployment default). Settings are stored in that browser's `localStorage`
+(`wormhole-settings`, never sent to the server), apply to the next transfer, and can be
+cleared with **Reset to defaults** (or by switching the profile back). A dot on the gear
+icon indicates custom relays are active.
 
-| Variable | Default | Purpose |
+| Setting | Default | Purpose |
 |---|---|---|
 | Mailbox server | `wss://relay.magic-wormhole.io:443/v1` | Mailbox (rendezvous) relay for SPAKE2 key exchange |
 | Transit relay | `wss://<host>/transit` | WebSocket URL for the transit relay bridge |
+| Transit TCP hint | `tcp://transit.magic-wormhole.io:4001` (upstream) | TCP relay hint advertised to CLI peers |
 
-Operators can also inject the classic `<script>`-tag override before the app loads; an
-operator-injected value acts as the default, which each visitor can still override in the
-modal. Priority: modal setting → `window.WORMHOLE_*` global → built-in default.
+Resolution order (lowest → highest priority): built-in default → `/config.js` (operator
+env) → `window.WORMHOLE_*` legacy `<script>` injection (still honored) → the custom
+profile in `localStorage`.
 
-```html
-<script>
-  window.WORMHOLE_TRANSIT_RELAY = 'wss://my-relay.example.com/transit';
-  window.WORMHOLE_MAILBOX_URL   = 'wss://my-mailbox.example.com/v1';
-</script>
-```
-
-> **Note (custom transit relays):** the WASM client always advertises the public TCP
-> relay (`tcp://transit.magic-wormhole.io:4001`) as an additional relay hint, so CLI
-> peers may pick the public relay even if your browser is on a custom one and fail to
-> meet. The defaults are unaffected (both hints reach the same upstream relay). See
-> [TODOS.md](TODOS.md) for the follow-up. The server operator's upstream transit
-> relay remains configurable via `--transit-relay` / `TRANSIT_RELAY` on the server.
+> **Note (custom transit relays):** the TCP hint advertised to CLI peers is fully
+> configurable (`WORMHOLE_TRANSIT_HINT` / the custom profile's TCP hint field). With
+> defaults, both the browser bridge and the hint reach the public upstream relay. On a
+> private deployment, set the hint to *your* TCP relay (e.g. `tcp://wormhole.dougsko.com:4001`)
+> so CLI peers meet your browser instead of the public one.
 
 ## License
 

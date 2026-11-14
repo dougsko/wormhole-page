@@ -1,0 +1,48 @@
+# Quadlet unit for caddy — TLS reverse proxy for wormhole.dougsko.com
+#
+# Serves:
+#   wormhole.dougsko.com          -> https://127.0.0.1:8080 (the wormhole-page app)
+#   mailbox.wormhole.dougsko.com  -> https://127.0.0.1:4000 (the WebSocket mailbox)
+#
+# Caddy obtains and renews Let's Encrypt certs automatically (ports 80+443
+# must be reachable from the internet and DNS must point here).
+#
+#   Rootful install:
+#     sudo cp caddy/Caddyfile /etc/caddy/Caddyfile   (edit the email first!)
+#     sudo cp quadlet/caddy.container /etc/containers/systemd/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now caddy.service
+#
+#   Logs: journalctl -u caddy.service -f
+#   Cert check: podman volume inspect systemd-caddy-data (path under /var/lib/containers)
+#
+# Notes:
+#   - Network=host: caddy binds 80/443/4000-facing sockets directly and reaches
+#     127.0.0.1 services without NAT. Simplest on a single-purpose host.
+#   - If you run ROOTLESS, ports <1024 need the unprivileged-port sysctl:
+#       sudo sysctl -w net.ipv4.ip_unprivileged_port_start=0
+#     (and make it persistent via /etc/sysctl.d/99-ports.conf), or keep this rootful.
+#   - WebSockets (the mailbox /v1 endpoint) work out of the box; Caddy passes
+#     Upgrade headers transparently.
+
+[Unit]
+Description=caddy — TLS reverse proxy for wormhole.dougsko.com
+After=network-online.target wormhole-page.service
+Wants=network-online.target
+
+[Container]
+Image=docker.io/library/caddy:2-alpine
+ContainerName=caddy
+Network=host
+Volume=/etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+# Persist ACME account + certs across rebuilds (critical to avoid LE rate limits)
+Volume=caddy-data:/data
+Volume=caddy-config:/config
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target

@@ -30,22 +30,44 @@ fn app_config(mailbox_url: &str) -> AppConfig<AppVersion> {
 /// Default public transit relay (TCP). The CLI peer will connect here directly.
 const PUBLIC_TRANSIT_RELAY: &str = "tcp://transit.magic-wormhole.io:4001";
 
-fn relay_hints(bridge_url: &str) -> Vec<transit::RelayHint> {
-    // The browser connects to our WebSocket bridge, which forwards to
-    // the public TCP relay. We advertise BOTH URLs so:
-    // - Our WASM code uses the ws:// bridge URL
-    // - The CLI peer uses the tcp:// public URL
-    // Both end up at the same upstream relay.
-    vec![
-        transit::RelayHint::from_urls(
-            None,
-            [
+/// Build the relay hint list advertised to the CLI peer.
+///
+/// We always advertise the WebSocket bridge URL (the browser end of the
+/// path) plus, by default, the public upstream TCP relay the CLI can dial:
+///
+/// - peer_hint = None            → advertise [bridge, tcp://transit.magic-wormhole.io:4001]
+///   (upstream default; browser ↔ CLI works out of the box)
+/// - peer_hint = Some("tcp://…")  → advertise [bridge, peer_hint] (e.g. private-infrastructure
+///   transit relay)
+/// - peer_hint = Some("")         → advertise [bridge] only
+///
+/// An unparseable hint logs a warning and falls back to the public default
+/// so a config typo never silently breaks interop.
+fn relay_hints(bridge_url: &str, peer_hint: Option<&str>) -> Vec<transit::RelayHint> {
+    match peer_hint {
+        None => vec![transit::RelayHint::from_urls(None, [
+            bridge_url.parse().unwrap(),
+            PUBLIC_TRANSIT_RELAY.parse().unwrap(),
+        ])
+        .unwrap()],
+        Some("") => vec![transit::RelayHint::from_urls(None, [bridge_url.parse().unwrap()]).unwrap()],
+        Some(hint) => {
+            let hints = transit::RelayHint::from_urls(None, [
                 bridge_url.parse().unwrap(),
-                PUBLIC_TRANSIT_RELAY.parse().unwrap(),
-            ],
-        )
-        .unwrap(),
-    ]
+                match hint.parse() {
+                    Ok(u) => u,
+                    Err(_) => {
+                        web_sys::console::log_1(&format!(
+                            "[wormhole] invalid transit peer hint {hint:?} — falling back to public relay"
+                        )
+                        .into());
+                        PUBLIC_TRANSIT_RELAY.parse().unwrap()
+                    }
+                },
+            ]);
+            vec![hints.unwrap()]
+        }
+    }
 }
 
 /// File metadata from a wormhole offer.
@@ -145,6 +167,7 @@ pub struct WormholeSender {
     code: String,
     mailbox: Option<MailboxConnection<AppVersion>>,
     transit_relay_url: String,
+    transit_peer_hint: Option<String>,
     conn_type: Option<String>,
     chunk_tx: Option<mpsc::Sender<Vec<u8>>>,
     done_rx: Option<oneshot::Receiver<Result<(), String>>>,
@@ -156,8 +179,11 @@ impl WormholeSender {
     /// Returns immediately with the code — does NOT wait for receiver.
     /// transit_relay_url: WebSocket URL for the transit relay (e.g. "ws://localhost:4002")
     /// mailbox_url: Mailbox relay URL (empty string uses default)
+    /// transit_peer_hint: optional TCP hint advertised to the CLI peer
+    ///   (e.g. "tcp://transit.example.com:4001"). Omit (undefined) to advertise
+    ///   the public upstream relay; pass "" to advertise the bridge only.
     #[wasm_bindgen]
-    pub async fn create(transit_relay_url: &str, mailbox_url: &str) -> Result<WormholeSender, JsError> {
+    pub async fn create(transit_relay_url: &str, mailbox_url: &str, transit_peer_hint: Option<String>) -> Result<WormholeSender, JsError> {
         web_sys::console::log_1(&"[wormhole] connecting to mailbox relay...".into());
         let config = app_config(mailbox_url);
         let mailbox = MailboxConnection::create(config, 2)
@@ -171,6 +197,7 @@ impl WormholeSender {
             code,
             mailbox: Some(mailbox),
             transit_relay_url: transit_relay_url.to_string(),
+            transit_peer_hint,
             conn_type: None,
             chunk_tx: None,
             done_rx: None,
@@ -218,7 +245,7 @@ impl WormholeSender {
         let (done_tx, done_rx) = oneshot::channel();
 
         let filename = filename.to_string();
-        let relay = relay_hints(&self.transit_relay_url);
+        let relay = relay_hints(&self.transit_relay_url, self.transit_peer_hint.as_deref());
 
         // Spawn the send task - it will run in the background, reading from
         // the channel as JS feeds chunks in
@@ -320,6 +347,7 @@ impl WormholeSender {
 pub struct WormholeReceiver {
     mailbox: Option<MailboxConnection<AppVersion>>,
     transit_relay_url: String,
+    transit_peer_hint: Option<String>,
     conn_type: Option<String>,
     receive_request: Option<transfer::ReceiveRequest>,
     chunk_rx: Option<mpsc::UnboundedReceiver<Vec<u8>>>,
@@ -331,8 +359,11 @@ impl WormholeReceiver {
     /// Connect to mailbox relay with the given code.
     /// transit_relay_url: WebSocket URL for the transit relay (e.g. "ws://localhost:4002")
     /// mailbox_url: Mailbox relay URL (empty string uses default)
+    /// transit_peer_hint: optional TCP hint advertised to the CLI peer
+    ///   (e.g. "tcp://transit.example.com:4001"). Omit (undefined) to advertise
+    ///   the public upstream relay; pass "" to advertise the bridge only.
     #[wasm_bindgen]
-    pub async fn create(code: &str, transit_relay_url: &str, mailbox_url: &str) -> Result<WormholeReceiver, JsError> {
+    pub async fn create(code: &str, transit_relay_url: &str, mailbox_url: &str, transit_peer_hint: Option<String>) -> Result<WormholeReceiver, JsError> {
         let nameplate = code.split('-').next().unwrap_or("?");
         web_sys::console::log_1(&format!("[wormhole] connecting to mailbox with code: {nameplate}-••••").into());
         let config = app_config(mailbox_url);
@@ -347,6 +378,7 @@ impl WormholeReceiver {
         Ok(WormholeReceiver {
             mailbox: Some(mailbox),
             transit_relay_url: transit_relay_url.to_string(),
+            transit_peer_hint,
             conn_type: None,
             receive_request: None,
             chunk_rx: None,
@@ -376,7 +408,7 @@ impl WormholeReceiver {
 
         web_sys::console::log_1(&"[wormhole] SPAKE2 complete, waiting for file offer...".into());
 
-        let relay = relay_hints(&self.transit_relay_url);
+        let relay = relay_hints(&self.transit_relay_url, self.transit_peer_hint.as_deref());
         let req = transfer::request_file(
             wormhole,
             relay,

@@ -23,8 +23,18 @@
 # Notes:
 #   - WantedBy=default.target works for both system and user managers.
 #   - Port 8080 is unprivileged, so rootless works unchanged.
-#   - PublishPort can be narrowed, e.g. 127.0.0.1:8080:8080, if you run it
-#     behind a reverse proxy.
+#   - PublishPort is bound to localhost: run it behind a reverse proxy
+#     (see deploy/README.md for a Caddy + Let's Encrypt setup). Open 80/443
+#     to the proxy, not 8080.
+#   - Infrastructure is configured via environment (see below); visitors can
+#     also override relays per-browser via the in-app gear icon. A sane way
+#     to point an OSS deployment at your own infrastructure:
+#       Environment=TRANSIT_RELAY=transit.example.com:4001
+#       Environment=WORMHOLE_MAILBOX_URL=wss://mailbox.example.com/v1
+#       Environment=WORMHOLE_TRANSIT_HINT=tcp://transit.example.com:4001
+#       Environment=WORMHOLE_PROFILE_NAME=example.com
+#       Environment=CSP_CONNECT_SRC="'self' wss://mailbox.example.com"
+#     Restart the unit; the client picks up /config.js on next load.
 
 [Unit]
 Description=wormhole.page — E2E encrypted file transfer in the browser
@@ -35,13 +45,20 @@ Wants=network-online.target
 [Container]
 Image=ghcr.io/dougsko/wormhole-page:latest
 ContainerName=wormhole-page
-PublishPort=8080:8080
-# Upstream transit relay for the WebSocket bridge (operator setting).
-# Point this at a self-hosted transit relay if you run one.
+PublishPort=127.0.0.1:8080:8080
+# Transit relay for the WebSocket -> TCP bridge, dialed BY THE SERVER.
+# Default: transit.magic-wormhole.io:4001 (upstream public relay).
 Environment=TRANSIT_RELAY=transit.magic-wormhole.io:4001
-# Content-Security-Policy connect-src for the browser client. The default is
-# the upstream value ('self' wss://relay.magic-wormhole.io:443). Loosen it to
-# let visitors use arbitrary relays via the in-app settings gear:
+# Deployment defaults advertised to the browser at /config.js. Empty values
+# mean "fall back to the built-in defaults" (public Magic Wormhole mailbox,
+# same-origin /transit bridge, public TCP peer hint).
+#Environment=WORMHOLE_MAILBOX_URL=wss://mailbox.example.com/v1
+#Environment=WORMHOLE_TRANSIT_URL=wss://transit.example.com/ws
+#Environment=WORMHOLE_TRANSIT_HINT=tcp://transit.example.com:4001
+#Environment=WORMHOLE_PROFILE_NAME=example.com
+# Content-Security-Policy connect-src. Default: 'self' wss://relay.magic-wormhole.io:443
+# (upstream-identical, tight). To let visitors use arbitrary relays from the
+# settings gear: CSP_CONNECT_SRC="'self' ws: wss:"
 #Environment=CSP_CONNECT_SRC="'self' ws: wss:"
 # Hardening: the app reads only its static assets and makes outbound
 # WebSocket/TCP connections; it never writes to the filesystem.

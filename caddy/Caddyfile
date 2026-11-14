@@ -1,0 +1,28 @@
+# Caddy config for wormhole.dougsko.com — see Quadlet/deploy notes in
+# deploy/README.md and quadlet/caddy.container.
+
+{
+	# Used for Let's Encrypt expiry notices. Change this.
+	email you@dougsko.com
+}
+
+# The app (this repo). TLS via Let's Encrypt, WS upgrades pass through.
+wormhole.dougsko.com {
+	reverse_proxy 127.0.0.1:8080
+
+	# Optional (recommended for private infrastructure): mute the built-in
+	# Umami analytics proxy.
+	# @umami path /a/script.js /a/api/send
+	# respond @umami 404
+}
+
+# The mailbox (WebSocket rendezvous) over wss. The plain-ws endpoint on
+# :4000 stays reachable directly for CLI clients as it is today; browsers
+# under HTTPS must use this wss:// URL instead (mixed content rules).
+mailbox.wormhole.dougsko.com {
+	reverse_proxy 127.0.0.1:4000
+}
+
+# No site block for the transit relay: it speaks raw TCP and is dialed
+# only by the app server (TRANSIT_RELAY=wormhole.dougsko.com:4001). No TLS
+# needed. Do NOT proxy it through Caddy.

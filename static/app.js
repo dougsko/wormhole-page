@@ -508,27 +508,57 @@ document.getElementById('receive-btn').addEventListener('click', startReceive);
 document.getElementById('receive-cancel-btn').addEventListener('click', cancelReceive);
 
 // --- Settings modal: per-user relay server overrides ---
-// Stored in localStorage (this browser only, never sent to the server).
-// Priority: localStorage override > window.WORMHOLE_* global > built-in default.
+// Storage schema v2 in localStorage (this browser only, never sent to the server):
+//   { profile: 'deployment' }                                   — deployment default
+//   { profile: 'custom', mailboxUrl?, transitRelayUrl?, transitTcpHint? }
+// v1 ({mailboxUrl, transitRelayUrl} without a profile) reads as custom and is
+// written back in v2 on the next save.
+// Priority: localStorage (custom) > window.WORMHOLE_CONFIG (server /config.js)
+//           > window.WORMHOLE_* (legacy operator <script> injection) > built-in default.
 const SETTINGS_KEY = 'wormhole-settings';
 const SETTINGS_DEFAULT_MAILBOX = 'wss://relay.magic-wormhole.io:443/v1';
 const settingsDefaultTransit = () =>
   (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit';
 
-function readSettings() {
+function operatorConfig() {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    const c = window.WORMHOLE_CONFIG;
+    return (c && typeof c === 'object' && !Array.isArray(c)) ? c : {};
   } catch (_) {
     return {};
   }
 }
 
+const nonEmptyStr = v => (typeof v === 'string' && v.trim()) ? v.trim() : undefined;
+
+function deploymentDefaults() {
+  const c = operatorConfig();
+  return {
+    profileName: nonEmptyStr(c.profileName) || 'Deployment default',
+    mailbox: nonEmptyStr(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || SETTINGS_DEFAULT_MAILBOX,
+    transit: nonEmptyStr(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || settingsDefaultTransit(),
+  };
+}
+
+function readSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { profile: 'deployment' };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { profile: 'deployment' };
+    // v1 migration (read-only; rewritten in v2 on next save)
+    if (!parsed.profile && (parsed.mailboxUrl || parsed.transitRelayUrl || parsed.transitTcpHint)) {
+      parsed.profile = 'custom';
+    }
+    if (parsed.profile !== 'custom') parsed.profile = 'deployment';
+    return parsed;
+  } catch (_) {
+    return { profile: 'deployment' };
+  }
+}
+
 function updateSettingsDot() {
-  const s = readSettings();
-  const custom = Boolean((s.mailboxUrl || '').trim() || (s.transitRelayUrl || '').trim());
+  const custom = readSettings().profile === 'custom';
   const dot = document.getElementById('settings-dot');
   if (dot) dot.classList.toggle('hidden', !custom);
 }
@@ -550,38 +580,103 @@ function validateRelayUrl(raw) {
   return { ok: true, value };
 }
 
+function validateTcpHint(raw) {
+  const value = raw.trim();
+  if (!value) return { ok: true, value: '' }; // empty = advertise public upstream relay
+  if (value.length > 2048) return { ok: false, error: 'TCP hint is too long (max 2048 characters)' };
+  if (!value.startsWith('tcp://')) return { ok: false, error: 'TCP hint must start with tcp://' };
+  try {
+    const url = new URL(value);
+    if (!url.hostname) return { ok: false, error: 'TCP hint has no host' };
+  } catch (_) {
+    return { ok: false, error: 'Not a valid TCP hint' };
+  }
+  return { ok: true, value };
+}
+
 function settingsElements() {
   return {
     overlay: document.getElementById('settings-overlay'),
+    profile: document.getElementById('settings-profile'),
+    customRows: document.getElementById('settings-custom-rows'),
+    summary: document.getElementById('settings-active-summary'),
     mailbox: document.getElementById('settings-mailbox-url'),
     transit: document.getElementById('settings-transit-url'),
+    hint: document.getElementById('settings-transit-hint'),
     error: document.getElementById('settings-error'),
     save: document.getElementById('settings-save'),
     reset: document.getElementById('settings-reset'),
     cancel: document.getElementById('settings-cancel'),
+    test: document.getElementById('settings-test'),
+    testResult: document.getElementById('settings-test-result'),
     closeBtn: document.getElementById('settings-close'),
     toggle: document.getElementById('settings-toggle'),
   };
 }
 
 function showSettingsError(msg, invalidField) {
-  const { error, mailbox, transit } = settingsElements();
+  const { error, mailbox, transit, hint } = settingsElements();
   error.textContent = msg || '';
   error.classList.toggle('hidden', !msg);
   mailbox.setAttribute('aria-invalid', String(invalidField === mailbox));
   transit.setAttribute('aria-invalid', String(invalidField === transit));
+  if (hint) hint.setAttribute('aria-invalid', String(invalidField === hint));
+}
+
+function populateProfileOptions(select) {
+  const defaults = deploymentDefaults();
+  select.innerHTML = '';
+  const optDefault = document.createElement('option');
+  optDefault.value = 'deployment';
+  optDefault.textContent = defaults.profileName + ' (default)';
+  const optCustom = document.createElement('option');
+  optCustom.value = 'custom';
+  optCustom.textContent = 'Custom (advanced)…';
+  select.append(optDefault, optCustom);
+}
+
+function setTestResult(msg, kind) {
+  const { testResult } = settingsElements();
+  if (!testResult) return;
+  testResult.textContent = msg || '';
+  testResult.classList.toggle('ok', kind === 'ok');
+  testResult.classList.toggle('err', kind === 'err');
+}
+
+function syncCustomRowsVisibility() {
+  const el = settingsElements();
+  const custom = el.profile.value === 'custom';
+  el.customRows.classList.toggle('hidden', !custom);
+  el.summary.classList.toggle('hidden', custom);
+}
+
+function renderSettingsUI() {
+  const el = settingsElements();
+  const s = readSettings();
+  const d = deploymentDefaults();
+  el.profile.value = s.profile === 'custom' ? 'custom' : 'deployment';
+  syncCustomRowsVisibility();
+  const custom = el.profile.value === 'custom';
+  if (custom) {
+    el.mailbox.value = s.mailboxUrl || '';
+    el.transit.value = s.transitRelayUrl || '';
+    el.hint.value = s.transitTcpHint || '';
+  } else {
+    el.summary.textContent = 'Using ' + d.profileName + ' — mailbox: ' + d.mailbox + ' · transit: ' + d.transit;
+  }
+  el.mailbox.placeholder = d.mailbox;
+  el.transit.placeholder = d.transit;
 }
 
 function openSettings() {
-  const { overlay, mailbox, transit, toggle } = settingsElements();
-  const s = readSettings();
-  mailbox.value = (s.mailboxUrl || '');
-  transit.value = (s.transitRelayUrl || '');
-  transit.placeholder = settingsDefaultTransit();
+  const el = settingsElements();
+  populateProfileOptions(el.profile);
+  renderSettingsUI();
   showSettingsError('', null);
-  overlay.classList.remove('hidden');
-  mailbox.focus();
-  toggle.setAttribute('aria-expanded', 'true');
+  setTestResult('');
+  el.overlay.classList.remove('hidden');
+  el.profile.focus();
+  el.toggle.setAttribute('aria-expanded', 'true');
 }
 
 function closeSettings() {
@@ -592,17 +687,27 @@ function closeSettings() {
 }
 
 function saveSettings() {
-  const { mailbox, transit } = settingsElements();
-  const mb = validateRelayUrl(mailbox.value);
-  if (!mb.ok) return showSettingsError('Mailbox server: ' + mb.error, mailbox);
-  const tr = validateRelayUrl(transit.value);
-  if (!tr.ok) return showSettingsError('Transit relay: ' + tr.error, transit);
+  const el = settingsElements();
+  const selected = el.profile.value;
+  if (selected === 'deployment') {
+    try { localStorage.removeItem(SETTINGS_KEY); } catch (_) {}
+    updateSettingsDot();
+    closeSettings();
+    return;
+  }
+  const mb = validateRelayUrl(el.mailbox.value);
+  if (!mb.ok) return showSettingsError('Mailbox server: ' + mb.error, el.mailbox);
+  const tr = validateRelayUrl(el.transit.value);
+  if (!tr.ok) return showSettingsError('Transit relay: ' + tr.error, el.transit);
+  const th = validateTcpHint(el.hint.value);
+  if (!th.ok) return showSettingsError('TCP hint: ' + th.error, el.hint);
 
-  const next = {};
+  const next = { profile: 'custom' };
   if (mb.value) next.mailboxUrl = mb.value;
   if (tr.value) next.transitRelayUrl = tr.value;
+  if (th.value) next.transitTcpHint = th.value;
   try {
-    if (Object.keys(next).length === 0) localStorage.removeItem(SETTINGS_KEY);
+    if (Object.keys(next).length === 1) localStorage.removeItem(SETTINGS_KEY);
     else localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
   } catch (_) {
     return showSettingsError('Could not save settings (browser storage unavailable)', null);
@@ -612,17 +717,66 @@ function saveSettings() {
 }
 
 function resetSettings() {
-  const { mailbox, transit } = settingsElements();
-  mailbox.value = '';
-  transit.value = '';
+  const el = settingsElements();
+  el.profile.value = 'deployment';
+  el.mailbox.value = '';
+  el.transit.value = '';
+  el.hint.value = '';
   try { localStorage.removeItem(SETTINGS_KEY); } catch (_) {}
+  renderSettingsUI();
   showSettingsError('', null);
+  setTestResult('');
   updateSettingsDot();
-  mailbox.focus();
+  el.profile.focus();
+}
+
+// Open a WebSocket to the currently effective mailbox URL and report whether
+// it completes the handshake. No data is sent; the socket is closed immediately.
+function probeMailbox(url) {
+  return new Promise((resolve) => {
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      resolve({ ok: false, error: String((e && e.message) || e) });
+      return;
+    }
+    let done = false;
+    const timer = setTimeout(() => finish(false, 'timed out after 5s'), 5000);
+    function finish(ok, error) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch (_) {}
+      resolve({ ok, error });
+    }
+    ws.onopen = () => finish(true);
+    ws.onerror = () => finish(false, 'connection failed' + (location.protocol === 'https:' ? ' (on HTTPS pages only wss:// relays are reachable)' : ''));
+    ws.onclose = (e) => { if (!done) finish(e.wasClean, 'closed before handshake (code ' + e.code + ')'); };
+  });
+}
+
+async function testConnection() {
+  const el = settingsElements();
+  let url;
+  if (el.profile.value === 'custom') {
+    // Test what the user typed (falling back to the field placeholder), not
+    // what was previously saved — the whole point is checking edits before save.
+    const mb = validateRelayUrl(el.mailbox.value);
+    if (!mb.ok) return showSettingsError('Mailbox server: ' + mb.error, el.mailbox);
+    url = mb.value || deploymentDefaults().mailbox;
+  } else {
+    url = deploymentDefaults().mailbox;
+  }
+  setTestResult('Testing ' + url + ' …');
+  const result = await probeMailbox(url);
+  if (result.ok) setTestResult('Connected to ' + url + ' ✓', 'ok');
+  else setTestResult('Could not connect: ' + (result.error || 'unknown error'), 'err');
 }
 
 (function initSettings() {
-  const { overlay, save, reset, cancel, closeBtn, toggle } = settingsElements();
+  const el = settingsElements();
+  const { overlay, save, reset, cancel, closeBtn, toggle, profile } = el;
   if (!overlay) return;
   toggle.setAttribute('aria-expanded', 'false');
   toggle.addEventListener('click', openSettings);
@@ -630,6 +784,8 @@ function resetSettings() {
   cancel.addEventListener('click', closeSettings);
   save.addEventListener('click', saveSettings);
   reset.addEventListener('click', resetSettings);
+  profile.addEventListener('change', syncCustomRowsVisibility);
+  if (el.test) el.test.addEventListener('click', testConnection);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSettings(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeSettings();

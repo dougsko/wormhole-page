@@ -34,7 +34,7 @@ sri: wasm
 	echo "  qr.js:            sha384-$$QR_JS_HASH" && \
 	echo "  wasm-client.js:   sha384-$$WASM_CLIENT_JS_HASH" && \
 	echo "  app.js:           sha384-$$APP_JS_HASH"
-	@BUILD_HASH=$$(cat static/wasm/wormhole_wasm_bg.wasm static/wasm/wormhole_wasm.js static/app.js static/style.css | openssl dgst -sha256 -binary | openssl base64 -A | head -c 8) && \
+	@BUILD_HASH=$$(cat static/wasm/wormhole_wasm_bg.wasm static/wasm/wormhole_wasm.js static/app.js static/style.css static/index.html | openssl dgst -sha256 -binary | openssl base64 -A | head -c 8) && \
 	sed -i "s|BUILD_HASH|$$BUILD_HASH|g" static/sw.js && \
 	echo "  sw.js cache:      wormhole-$$BUILD_HASH"
 

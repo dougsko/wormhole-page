@@ -561,6 +561,43 @@ a:visited { color: var(--accent); }
   margin: 0 0 16px;
 }
 
+.settings-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-family: monospace;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  outline: none;
+  appearance: none;
+}
+.settings-field select:hover { background: var(--bg-input-hover); }
+.settings-field select:focus { border-color: var(--accent); }
+.settings-active {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+.settings-active strong { color: var(--text-secondary, var(--text-muted)); font-weight: 600; }
+.settings-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.settings-test-result {
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+.settings-test-result.ok { color: var(--success, #2f9e44); }
+.settings-test-result.err { color: var(--error); }
+
 .settings-actions {
   display: flex;
   align-items: center;
