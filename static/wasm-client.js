@@ -114,12 +114,33 @@ function sanitizeFilename(name) {
     || 'download';
 }
 
-// Transit relay URL — same server, /transit path (WS-to-TCP bridge)
-const TRANSIT_RELAY_URL = window.WORMHOLE_TRANSIT_RELAY ||
-  ((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit');
+// Relay URL resolution, lowest to highest priority:
+//   built-in default  <  window.WORMHOLE_* global (operator <script> injection)  <  user setting (localStorage)
+// User settings are managed via the Settings modal (see app.js getSettings()).
+const DEFAULT_TRANSIT_RELAY_URL =
+  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit';
+const DEFAULT_MAILBOX_URL = 'wss://relay.magic-wormhole.io:443/v1';
 
-// Mailbox relay URL — defaults to the public Magic Wormhole relay
-const MAILBOX_URL = window.WORMHOLE_MAILBOX_URL || 'wss://relay.magic-wormhole.io:443/v1';
+function storedSettings() {
+  try {
+    const raw = localStorage.getItem('wormhole-settings');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getTransitRelayUrl() {
+  const s = storedSettings();
+  return (s.transitRelayUrl || window.WORMHOLE_TRANSIT_RELAY || DEFAULT_TRANSIT_RELAY_URL);
+}
+
+function getMailboxUrl() {
+  const s = storedSettings();
+  return (s.mailboxUrl || window.WORMHOLE_MAILBOX_URL || DEFAULT_MAILBOX_URL);
+}
 
 // --- Minimal ZIP creator (store mode, no compression) ---
 // Produces a standard ZIP file compatible with unzip, 7z, wormhole-rs, etc.
@@ -440,7 +461,7 @@ async function wasmSend(fileOrFiles, callbacks) {
   let sender = null;
   try {
     onStatus('allocating code...');
-    sender = await wasm.WormholeSender.create(TRANSIT_RELAY_URL, MAILBOX_URL);
+    sender = await wasm.WormholeSender.create(getTransitRelayUrl(), getMailboxUrl());
     activeSender = sender;
     const code = sender.code();
     onCode(code);
@@ -484,7 +505,7 @@ async function wasmReceive(code, callbacks) {
   let receiver = null;
   try {
     onStatus('establishing encrypted connection...');
-    receiver = await wasm.WormholeReceiver.create(code, TRANSIT_RELAY_URL, MAILBOX_URL);
+    receiver = await wasm.WormholeReceiver.create(code, getTransitRelayUrl(), getMailboxUrl());
     activeReceiver = receiver;
 
     onStatus('waiting for file offer...');

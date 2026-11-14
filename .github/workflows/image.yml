@@ -1,0 +1,67 @@
+name: Image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    name: Build and push Podman image to GHCR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install podman (if missing)
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y podman
+          fi
+          podman --version
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        id: build
+        run: |
+          set -euo pipefail
+          IMAGE="$REGISTRY/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          TAGS=("$IMAGE:sha-$SHORT_SHA")
+          if [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            TAGS+=("$IMAGE:main" "$IMAGE:latest")
+          fi
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAGS+=("$IMAGE:${GITHUB_REF_NAME#v}" "$IMAGE:latest")
+          fi
+          BUILD_ARGS=()
+          for t in "${TAGS[@]}"; do BUILD_ARGS+=(-t "$t"); done
+          podman build -f Containerfile "${BUILD_ARGS[@]}" .
+          {
+            echo "image=$IMAGE"
+            echo "tags=${TAGS[*]}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Push image
+        run: |
+          set -euo pipefail
+          for t in ${{ steps.build.outputs.tags }}; do
+            podman push "$t"
+          done
+
+      - name: Summary
+        run: |
+          echo "### Pushed to GHCR" >> "$GITHUB_STEP_SUMMARY"
+          for t in ${{ steps.build.outputs.tags }}; do
+            echo "- \`$t\`" >> "$GITHUB_STEP_SUMMARY"
+          done

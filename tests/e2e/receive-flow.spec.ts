@@ -80,6 +80,6 @@ test.describe('Receive flow', () => {
     await page.locator('#receive-cancel-btn').click();
 
     // URL should be cleaned back to /
-    await expect(page).toHaveURL('http://localhost:8080/');
+    await expect(page).toHaveURL(new URL('/', page.url()).toString());
   });
 });

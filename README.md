@@ -46,6 +46,24 @@ wormhole.page is a single binary (~5 MB) with zero external dependencies.
 [![Deploy on Fly.io](https://img.shields.io/badge/Deploy%20on-Fly.io-7b36ed?logo=fly-dot-io)](https://fly.io/docs/launch/fly-from-a-github-repo/?repo=lucamartinetti/wormhole-page)
 [![Deploy on Railway](https://img.shields.io/badge/Deploy%20on-Railway-0B0D0E?logo=railway)](https://railway.app/new/template?repo=lucamartinetti/wormhole-page)
 
+### Podman (prebuilt image from GHCR)
+
+Every push to `main` and every `v*` tag builds a Podman/OCI image via GitHub Actions and
+pushes it to the GitHub Container Registry (see [`.github/workflows/image.yml`](.github/workflows/image.yml)):
+
+```bash
+podman pull ghcr.io/dougsko/wormhole-page:latest
+podman run -p 8080:8080 ghcr.io/dougsko/wormhole-page:latest
+```
+
+Tags: `latest` and `main` track the `main` branch, `sha-<shortsha>` is published for every
+build, and `v1.2.3` tags (cut from a `v*` git tag) publish `1.2.3` + `latest`.
+
+> GHCR packages are private by default even for public repos. To pull anonymously, make
+> the package public once: GitHub → your profile → **Packages** → `wormhole-page` →
+> **Package settings** → **Change visibility** → Public. Otherwise authenticate first with
+> `echo $GITHUB_TOKEN | podman login ghcr.io -u <user> --password-stdin`.
+
 ### Docker Compose
 
 ```bash
@@ -84,7 +102,25 @@ wormhole-page-server [OPTIONS]
 
 #### Client-side overrides
 
-The WASM client reads optional globals from `window` before connecting. Set them in a `<script>` tag before the app loads:
+Visitors can point their own browser at different relays from the web UI — no rebuild or
+redeploy needed. Click the **gear icon** (top-right, next to the theme toggle) and set:
+
+- **Mailbox (rendezvous) server** — used for the SPAKE2 key exchange
+- **Transit relay** — WebSocket URL of the transit relay bridge
+
+Both accept `ws://` and `wss://` URLs and are validated on save (empty field = default).
+The settings are stored in that browser's `localStorage` (`wormhole-settings`, nothing is
+sent to the server), apply to the next transfer, and can be cleared with **Reset to
+defaults**. A dot on the gear icon indicates custom relays are active.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| Mailbox server | `wss://relay.magic-wormhole.io:443/v1` | Mailbox (rendezvous) relay for SPAKE2 key exchange |
+| Transit relay | `wss://<host>/transit` | WebSocket URL for the transit relay bridge |
+
+Operators can also inject the classic `<script>`-tag override before the app loads; an
+operator-injected value acts as the default, which each visitor can still override in the
+modal. Priority: modal setting → `window.WORMHOLE_*` global → built-in default.
 
 ```html
 <script>
@@ -93,10 +129,12 @@ The WASM client reads optional globals from `window` before connecting. Set them
 </script>
 ```
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `WORMHOLE_TRANSIT_RELAY` | `wss://<host>/transit` | WebSocket URL for the transit relay bridge |
-| `WORMHOLE_MAILBOX_URL` | `wss://relay.magic-wormhole.io:443/v1` | Mailbox (rendezvous) relay for SPAKE2 key exchange |
+> **Note (custom transit relays):** the WASM client always advertises the public TCP
+> relay (`tcp://transit.magic-wormhole.io:4001`) as an additional relay hint, so CLI
+> peers may pick the public relay even if your browser is on a custom one and fail to
+> meet. The defaults are unaffected (both hints reach the same upstream relay). See
+> [TODOS.md](TODOS.md) for the follow-up. The server operator's upstream transit
+> relay remains configurable via `--transit-relay` / `TRANSIT_RELAY` on the server.
 
 ## License
 

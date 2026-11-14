@@ -21,6 +21,7 @@ test.describe('Service worker', () => {
       return registration.scope;
     });
 
-    expect(scope).toBe('http://localhost:8080/');
+    const expectedOrigin = new URL(page.url()).origin;
+    expect(scope).toBe(`${expectedOrigin}/`);
   });
 });

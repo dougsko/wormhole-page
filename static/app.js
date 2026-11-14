@@ -492,3 +492,133 @@ document.getElementById('send-cancel-btn').addEventListener('click', cancelSend)
 document.getElementById('receive-code').addEventListener('keydown', function(e) { if (e.key === 'Enter') startReceive(); });
 document.getElementById('receive-btn').addEventListener('click', startReceive);
 document.getElementById('receive-cancel-btn').addEventListener('click', cancelReceive);
+
+// --- Settings modal: per-user relay server overrides ---
+// Stored in localStorage (this browser only, never sent to the server).
+// Priority: localStorage override > window.WORMHOLE_* global > built-in default.
+const SETTINGS_KEY = 'wormhole-settings';
+const SETTINGS_DEFAULT_MAILBOX = 'wss://relay.magic-wormhole.io:443/v1';
+const settingsDefaultTransit = () =>
+  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit';
+
+function readSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function updateSettingsDot() {
+  const s = readSettings();
+  const custom = Boolean((s.mailboxUrl || '').trim() || (s.transitRelayUrl || '').trim());
+  const dot = document.getElementById('settings-dot');
+  if (dot) dot.classList.toggle('hidden', !custom);
+}
+
+function validateRelayUrl(raw) {
+  const value = raw.trim();
+  if (!value) return { ok: true, value: '' }; // empty = use default
+  if (value.length > 2048) return { ok: false, error: 'URL is too long (max 2048 characters)' };
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    return { ok: false, error: 'Not a valid URL' };
+  }
+  if (url.protocol !== 'wss:' && url.protocol !== 'ws:') {
+    return { ok: false, error: 'URL must start with ws:// or wss://' };
+  }
+  if (!url.hostname) return { ok: false, error: 'URL has no host' };
+  return { ok: true, value };
+}
+
+function settingsElements() {
+  return {
+    overlay: document.getElementById('settings-overlay'),
+    mailbox: document.getElementById('settings-mailbox-url'),
+    transit: document.getElementById('settings-transit-url'),
+    error: document.getElementById('settings-error'),
+    save: document.getElementById('settings-save'),
+    reset: document.getElementById('settings-reset'),
+    cancel: document.getElementById('settings-cancel'),
+    closeBtn: document.getElementById('settings-close'),
+    toggle: document.getElementById('settings-toggle'),
+  };
+}
+
+function showSettingsError(msg, invalidField) {
+  const { error, mailbox, transit } = settingsElements();
+  error.textContent = msg || '';
+  error.classList.toggle('hidden', !msg);
+  mailbox.setAttribute('aria-invalid', String(invalidField === mailbox));
+  transit.setAttribute('aria-invalid', String(invalidField === transit));
+}
+
+function openSettings() {
+  const { overlay, mailbox, transit, toggle } = settingsElements();
+  const s = readSettings();
+  mailbox.value = (s.mailboxUrl || '');
+  transit.value = (s.transitRelayUrl || '');
+  transit.placeholder = settingsDefaultTransit();
+  showSettingsError('', null);
+  overlay.classList.remove('hidden');
+  mailbox.focus();
+  toggle.setAttribute('aria-expanded', 'true');
+}
+
+function closeSettings() {
+  const { overlay, toggle } = settingsElements();
+  overlay.classList.add('hidden');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.focus();
+}
+
+function saveSettings() {
+  const { mailbox, transit } = settingsElements();
+  const mb = validateRelayUrl(mailbox.value);
+  if (!mb.ok) return showSettingsError('Mailbox server: ' + mb.error, mailbox);
+  const tr = validateRelayUrl(transit.value);
+  if (!tr.ok) return showSettingsError('Transit relay: ' + tr.error, transit);
+
+  const next = {};
+  if (mb.value) next.mailboxUrl = mb.value;
+  if (tr.value) next.transitRelayUrl = tr.value;
+  try {
+    if (Object.keys(next).length === 0) localStorage.removeItem(SETTINGS_KEY);
+    else localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  } catch (_) {
+    return showSettingsError('Could not save settings (browser storage unavailable)', null);
+  }
+  updateSettingsDot();
+  closeSettings();
+}
+
+function resetSettings() {
+  const { mailbox, transit } = settingsElements();
+  mailbox.value = '';
+  transit.value = '';
+  try { localStorage.removeItem(SETTINGS_KEY); } catch (_) {}
+  showSettingsError('', null);
+  updateSettingsDot();
+  mailbox.focus();
+}
+
+(function initSettings() {
+  const { overlay, save, reset, cancel, closeBtn, toggle } = settingsElements();
+  if (!overlay) return;
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.addEventListener('click', openSettings);
+  closeBtn.addEventListener('click', closeSettings);
+  cancel.addEventListener('click', closeSettings);
+  save.addEventListener('click', saveSettings);
+  reset.addEventListener('click', resetSettings);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSettings(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeSettings();
+  });
+  updateSettingsDot();
+})();
