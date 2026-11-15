@@ -64,6 +64,11 @@ struct Args {
     /// (e.g. "wormhole.dougsko.com"). Empty = "Deployment default".
     #[arg(long, default_value = "", env = "WORMHOLE_PROFILE_NAME")]
     profile_name: String,
+
+    /// Build/version identifier shown in the UI footer and served at /version.
+    /// Set by the image build to the git short SHA (ARG GIT_SHA → ENV WORMHOLE_VERSION).
+    #[arg(long, default_value = "dev", env = "WORMHOLE_VERSION")]
+    version: String,
 }
 
 /// Build the full Content-Security-Policy from a connect-src value.
@@ -82,6 +87,7 @@ struct AppState {
     csp: HeaderValue,
     http_client: reqwest::Client,
     config_js: Arc<String>,
+    version: Arc<String>,
 }
 
 #[tokio::main]
@@ -126,6 +132,7 @@ async fn main() {
         csp,
         http_client,
         config_js: Arc::new(config_js),
+        version: Arc::new(args.version.clone()),
     };
 
     // Static file service
@@ -135,6 +142,7 @@ async fn main() {
         .route("/health", axum::routing::get(health))
         .route("/sw.js", axum::routing::get(serve_sw))
         .route("/config.js", axum::routing::get(serve_config_js))
+        .route("/version", axum::routing::get(serve_version))
         .route("/transit", axum::routing::get(transit_ws))
         .route("/a/script.js", axum::routing::get(analytics_script))
         .route("/a/api/send", axum::routing::post(analytics_event))
@@ -182,11 +190,12 @@ fn js_string(s: &str) -> String {
 /// "not configured" (the client falls back to its built-in default).
 fn build_config_js(args: &Args) -> String {
     format!(
-        "window.WORMHOLE_CONFIG = {{\"mailboxUrl\":\"{}\",\"transitUrl\":\"{}\",\"transitTcpHint\":\"{}\",\"profileName\":\"{}\"}};\n",
+        "window.WORMHOLE_CONFIG = {{\"mailboxUrl\":\"{}\",\"transitUrl\":\"{}\",\"transitTcpHint\":\"{}\",\"profileName\":\"{}\",\"version\":\"{}\"}};\n",
         js_string(&args.mailbox_url),
         js_string(&args.transit_url),
         js_string(&args.transit_hint),
         js_string(&args.profile_name),
+        js_string(&args.version),
     )
 }
 
@@ -228,6 +237,24 @@ async fn security_headers(
 /// GET /health
 async fn health() -> &'static str {
     "ok"
+}
+
+/// GET /version — build identifier (git short SHA, or "dev" for local builds).
+/// Handy for verifying which image is actually serving traffic.
+async fn serve_version(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [
+            (
+                HeaderName::from_static("content-type"),
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            ),
+            (
+                HeaderName::from_static("cache-control"),
+                HeaderValue::from_static("no-store"),
+            ),
+        ],
+        format!("wormhole-page {}\n", state.version),
+    )
 }
 
 /// GET /config.js — deployment configuration for the browser client.

@@ -54,7 +54,7 @@ jobs:
           fi
           BUILD_ARGS=()
           for t in "${TAGS[@]}"; do BUILD_ARGS+=(-t "$t"); done
-          podman build -f Containerfile "${BUILD_ARGS[@]}" .
+          podman build -f Containerfile --build-arg GIT_SHA="$SHORT_SHA" "${BUILD_ARGS[@]}" .
           echo "tags=${TAGS[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Push per-arch image

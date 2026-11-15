@@ -18,4 +18,19 @@ test.describe('Server endpoints', () => {
     expect(response.headers()['content-type']).toContain('application/javascript');
     expect(response.headers()['cache-control']).toContain('no-cache');
   });
+
+  test('GET /version returns the build identifier', async ({ request }) => {
+    const response = await request.get('/version');
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('text/plain');
+    expect(await response.text()).toMatch(/^wormhole-page \S+\n?$/);
+  });
+
+  test('GET /config.js exposes the build version', async ({ request }) => {
+    const response = await request.get('/config.js');
+    expect(response.status()).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('"version"');
+    expect(body).toMatch(/"version":"[^"]+"/);
+  });
 });

@@ -11,6 +11,13 @@ test.describe('Page load', () => {
     await expect(page).toHaveTitle('wormhole.page');
   });
 
+  test('version footer is present', async ({ page }) => {
+    await page.goto('/');
+    const version = page.locator('#app-version');
+    await expect(version).toBeVisible();
+    await expect(version).toHaveText(/^wormhole-page \S+/);
+  });
+
   test('dropzone is visible', async ({ page }) => {
     await page.goto('/');
     const dropzone = page.locator('#dropzone');

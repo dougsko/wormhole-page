@@ -872,3 +872,31 @@ if (document.getElementById('btn-copy-text')) {
     }, 60000);
   });
 }
+
+// --- Version footer (verify which build this browser is actually running) ---
+(function initVersionFooter() {
+  const el = document.getElementById('app-version');
+  if (!el) return;
+  const v = nonEmptyStr(operatorConfig().version);
+  if (!v) {
+    const footer = el.closest('.app-footer');
+    if (footer) footer.style.display = 'none';
+    return;
+  }
+  el.textContent = 'wormhole-page ' + v;
+  el.title = 'Click to copy: wormhole-page ' + v;
+  el.addEventListener('click', function () {
+    const label = 'wormhole-page ' + v;
+    const done = function () {
+      el.classList.add('copied');
+      const prev = el.textContent;
+      el.textContent = 'copied ✓';
+      setTimeout(function () { el.textContent = prev; el.classList.remove('copied'); }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(label).then(done, done);
+    } else {
+      done();
+    }
+  });
+})();

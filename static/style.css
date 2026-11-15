@@ -653,3 +653,21 @@ a:visited { color: var(--accent); }
   margin: 0;
   color: var(--text-primary);
 }
+
+.app-footer {
+  text-align: center;
+  padding: 4px 0 14px;
+}
+.app-version {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
+  cursor: pointer;
+  user-select: all;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.app-version:hover { opacity: 1; border-color: var(--border-light); }
+.app-version.copied { color: var(--accent); border-color: var(--accent); }

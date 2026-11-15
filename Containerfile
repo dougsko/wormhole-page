@@ -17,6 +17,9 @@ RUN cd crates/wormhole-wasm && wasm-pack build --target web --release
 # --- Runtime stage ---
 FROM debian:bookworm-slim
 
+ARG GIT_SHA=dev
+ENV WORMHOLE_VERSION=$GIT_SHA
+
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /build/target/release/wormhole-page-server /usr/local/bin/
