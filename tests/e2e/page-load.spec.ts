@@ -18,6 +18,32 @@ test.describe('Page load', () => {
     await expect(version).toHaveText(/^wormhole-page \S+/);
   });
 
+  test('version footer click copies the version to the clipboard', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('/');
+    const version = page.locator('#app-version');
+    const label = (await version.innerText()).trim();
+    await version.click();
+    await expect(version).toHaveText('copied ✓');
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toBe(label);
+  });
+
+  test('version footer copy falls back when the Clipboard API is unavailable', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      const orig = document.execCommand ? document.execCommand.bind(document) : null;
+      document.execCommand = function (cmd, ...rest) {
+        if (cmd === 'copy') return true;
+        return orig ? orig(cmd) : false;
+      };
+    });
+    await page.goto('/');
+    const version = page.locator('#app-version');
+    await version.click();
+    await expect(version).toHaveText('copied ✓');
+  });
+
   test('dropzone is visible', async ({ page }) => {
     await page.goto('/');
     const dropzone = page.locator('#dropzone');

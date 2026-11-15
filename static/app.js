@@ -130,12 +130,45 @@ function setQrMode(web) {
   updateCodeDisplay();
 }
 
+// Copy text to the clipboard. Uses the async Clipboard API in secure
+// contexts; falls back to a hidden textarea + execCommand on plain HTTP,
+// where navigator.clipboard is undefined. Resolves to true on success.
+function fallbackCopy(text) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function copyText(text) {
+  if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(
+      function () { return true; },
+      function () { return fallbackCopy(text); }
+    );
+  }
+  return Promise.resolve(fallbackCopy(text));
+}
+
 function copyCode() {
   const text = qrModeWeb ? getReceiveUrl() : currentCode;
   track('code-copy', { mode: qrModeWeb ? 'web' : 'wormhole' });
-  navigator.clipboard.writeText(text).then(() => {
+  copyText(text).then((ok) => {
     const label = document.getElementById('copy-label');
-    label.textContent = 'Copied!';
+    label.textContent = ok ? 'Copied!' : 'Copy failed';
     setTimeout(() => { label.textContent = 'Copy'; }, 1000);
   });
 }
@@ -852,9 +885,9 @@ if (sendTextPanel && document.getElementById('btn-text')) {
 if (document.getElementById('btn-copy-text')) {
   document.getElementById('btn-copy-text').addEventListener('click', function() {
     if (lastReceivedText === null) return;
-    navigator.clipboard.writeText(lastReceivedText).then(function() {
+    copyText(lastReceivedText).then(function(ok) {
       var label = document.getElementById('copy-text-label');
-      label.textContent = 'Copied!';
+      label.textContent = ok ? 'Copied!' : 'Copy failed';
       setTimeout(function() { label.textContent = 'Copy'; }, 1000);
     });
   });
@@ -887,16 +920,11 @@ if (document.getElementById('btn-copy-text')) {
   el.title = 'Click to copy: wormhole-page ' + v;
   el.addEventListener('click', function () {
     const label = 'wormhole-page ' + v;
-    const done = function () {
+    copyText(label).then(function (ok) {
       el.classList.add('copied');
       const prev = el.textContent;
-      el.textContent = 'copied ✓';
+      el.textContent = ok ? 'copied ✓' : 'copy failed';
       setTimeout(function () { el.textContent = prev; el.classList.remove('copied'); }, 1200);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(label).then(done, done);
-    } else {
-      done();
-    }
+    });
   });
 })();
