@@ -120,10 +120,10 @@ h1 {
   text-align: center;
   font-size: 12px;
   color: var(--text-secondary);
-  margin: 2px 0 2px;
+  margin: 4px 0 12px;
 }
-.fork-note a { color: var(--accent); text-decoration: none; }
-.fork-note a:hover { text-decoration: underline; }
+.fork-note a, .fork-note a:visited { color: inherit; text-decoration: underline; }
+.fork-note a:hover { color: inherit; text-decoration: underline; }
 
 .warning {
   text-align: center;
@@ -399,7 +399,7 @@ h1 {
 
 /* === CLI & Apps Section === */
 .cli-section {
-  margin-top: 32px;
+  margin-top: 0;
   border-top: 1px solid var(--border-focus);
   padding-top: 16px;
 }
