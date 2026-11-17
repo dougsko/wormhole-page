@@ -75,6 +75,16 @@ test.describe('Settings modal', () => {
     await expect(page.locator('#settings-profile')).toHaveValue('deployment');
   });
 
+  test('custom form offers the standard public infrastructure as example text', async ({ page }) => {
+    await mockDeploymentConfig(page);
+    await page.reload();
+    await page.click('#settings-toggle');
+    await page.selectOption('#settings-profile', 'custom');
+    await expect(page.locator('#settings-mailbox-url')).toHaveAttribute('placeholder', 'wss://relay.magic-wormhole.io:443/v1');
+    await expect(page.locator('#settings-transit-url')).toHaveAttribute('placeholder', /\/transit\/public$/);
+    await expect(page.locator('#settings-transit-hint')).toHaveAttribute('placeholder', 'tcp://transit.magic-wormhole.io:4001');
+  });
+
   test('cancel closes without saving', async ({ page }) => {
     await openCustom(page);
     await page.fill('#settings-mailbox-url', 'wss://mailbox.example.com/v1');

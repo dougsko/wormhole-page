@@ -575,6 +575,7 @@ function deploymentDefaults() {
     profileName: nonEmptyStr(c.profileName) || 'Deployment default',
     mailbox: nonEmptyStr(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || SETTINGS_DEFAULT_MAILBOX,
     transit: nonEmptyStr(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || settingsDefaultTransit(),
+    hint: nonEmptyStr(c.transitTcpHint),
   };
 }
 
@@ -584,7 +585,7 @@ function deploymentConfigured(c) {
 }
 
 function publicDefaults() {
-  return { profileName: PUBLIC_PROFILE_NAME, mailbox: SETTINGS_DEFAULT_MAILBOX, transit: settingsDefaultPublicTransit() };
+  return { profileName: PUBLIC_PROFILE_NAME, mailbox: SETTINGS_DEFAULT_MAILBOX, transit: settingsDefaultPublicTransit(), hint: 'tcp://transit.magic-wormhole.io:4001' };
 }
 
 // Which profile is preselected when the browser has no stored choice:
@@ -729,7 +730,9 @@ function renderSettingsUI() {
   const el = settingsElements();
   const s = readSettings();
   const prof = effectiveProfile();
-  const d = prof === 'public' ? publicDefaults() : deploymentDefaults();
+  // The custom form's example text advertises the standard (public) infrastructure,
+  // not this deployment's servers.
+  const d = prof === 'deployment' ? deploymentDefaults() : publicDefaults();
   el.profile.value = prof;
   syncCustomRowsVisibility();
   const custom = el.profile.value === 'custom';
@@ -742,6 +745,7 @@ function renderSettingsUI() {
   }
   el.mailbox.placeholder = d.mailbox;
   el.transit.placeholder = d.transit;
+  if (el.hint) el.hint.placeholder = d.hint || publicDefaults().hint;
 }
 
 function openSettings() {
