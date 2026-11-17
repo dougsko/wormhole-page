@@ -8,7 +8,7 @@ test.describe('Page load', () => {
 
   test('has correct title', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle('wormhole.page');
+    await expect(page).toHaveTitle('wormhole.dougsko.com');
   });
 
   test('version footer is present', async ({ page }) => {

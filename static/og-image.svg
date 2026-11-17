@@ -14,7 +14,7 @@
   </g>
 
   <!-- Title -->
-  <text x="600" y="400" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="48" font-weight="700" fill="#1a1b1e" letter-spacing="-0.5">wormhole.page</text>
+  <text x="600" y="400" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="48" font-weight="700" fill="#1a1b1e" letter-spacing="-0.5">wormhole.dougsko.com</text>
 
   <!-- Subtitle -->
   <text x="600" y="445" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="400" fill="#868e96">End-to-end encrypted file transfer</text>

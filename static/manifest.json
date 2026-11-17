@@ -1,6 +1,6 @@
 {
-  "name": "wormhole.page",
-  "short_name": "wormhole",
+  "name": "wormhole.dougsko.com",
+  "short_name": "wormhole.dougsko.com",
   "description": "End-to-end encrypted file transfer",
   "start_url": "/",
   "display": "standalone",

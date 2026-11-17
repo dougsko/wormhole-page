@@ -17,7 +17,7 @@ const OFFLINE_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wormhole.page — Offline</title>
+<title>wormhole.dougsko.com — Offline</title>
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fafafa; color: #333; text-align: center; }
   @media (prefers-color-scheme: dark) { body { background: #1a1b1e; color: #e0e0e0; } }
