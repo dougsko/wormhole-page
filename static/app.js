@@ -542,16 +542,21 @@ document.getElementById('receive-cancel-btn').addEventListener('click', cancelRe
 
 // --- Settings modal: per-user relay server overrides ---
 // Storage schema v2 in localStorage (this browser only, never sent to the server):
-//   { profile: 'deployment' }                                   — deployment default
+//   { profile: 'public' }                                       — standard Magic Wormhole servers
+//   { profile: 'deployment' }                                   — the deployment's own servers (only stored when the operator default is public)
 //   { profile: 'custom', mailboxUrl?, transitRelayUrl?, transitTcpHint? }
 // v1 ({mailboxUrl, transitRelayUrl} without a profile) reads as custom and is
 // written back in v2 on the next save.
-// Priority: localStorage (custom) > window.WORMHOLE_CONFIG (server /config.js)
-//           > window.WORMHOLE_* (legacy operator <script> injection) > built-in default.
+// Priority: localStorage profile selection > window.WORMHOLE_CONFIG (server /config.js,
+//           incl. defaultProfile) > window.WORMHOLE_* (legacy operator <script> injection)
+//           > built-in public default.
 const SETTINGS_KEY = 'wormhole-settings';
 const SETTINGS_DEFAULT_MAILBOX = 'wss://relay.magic-wormhole.io:443/v1';
+const PUBLIC_PROFILE_NAME = 'Standard public servers';
 const settingsDefaultTransit = () =>
   (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit';
+const settingsDefaultPublicTransit = () =>
+  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit/public';
 
 function operatorConfig() {
   try {
@@ -573,27 +578,49 @@ function deploymentDefaults() {
   };
 }
 
+function deploymentConfigured(c) {
+  return !!(nonEmptyStr(c.mailboxUrl) || nonEmptyStr(c.transitUrl) ||
+            nonEmptyStr(c.transitTcpHint) || nonEmptyStr(c.profileName));
+}
+
+function publicDefaults() {
+  return { profileName: PUBLIC_PROFILE_NAME, mailbox: SETTINGS_DEFAULT_MAILBOX, transit: settingsDefaultPublicTransit() };
+}
+
+// Which profile is preselected when the browser has no stored choice:
+// the operator's defaultProfile from /config.js, defaulting to 'deployment'
+// when configured (back-compat), else 'public'.
+function defaultSelection() {
+  const c = operatorConfig();
+  if (nonEmptyStr(c.defaultProfile) === 'public') return 'public';
+  return deploymentConfigured(c) ? 'deployment' : 'public';
+}
+
+function effectiveProfile() {
+  return readSettings().profile || defaultSelection();
+}
+
 function readSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { profile: 'deployment' };
+    if (!raw) return {};
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { profile: 'deployment' };
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     // v1 migration (read-only; rewritten in v2 on next save)
     if (!parsed.profile && (parsed.mailboxUrl || parsed.transitRelayUrl || parsed.transitTcpHint)) {
       parsed.profile = 'custom';
     }
-    if (parsed.profile !== 'custom') parsed.profile = 'deployment';
-    return parsed;
+    if (parsed.profile === 'custom') return parsed;
+    if (parsed.profile === 'public' || parsed.profile === 'deployment') return { profile: parsed.profile };
+    return {}; // unknown/legacy value: fall back to the operator default
   } catch (_) {
-    return { profile: 'deployment' };
+    return {};
   }
 }
 
 function updateSettingsDot() {
-  const custom = readSettings().profile === 'custom';
   const dot = document.getElementById('settings-dot');
-  if (dot) dot.classList.toggle('hidden', !custom);
+  if (dot) dot.classList.toggle('hidden', effectiveProfile() === defaultSelection());
 }
 
 function validateRelayUrl(raw) {
@@ -657,15 +684,23 @@ function showSettingsError(msg, invalidField) {
 }
 
 function populateProfileOptions(select) {
-  const defaults = deploymentDefaults();
+  const c = operatorConfig();
+  const def = defaultSelection();
   select.innerHTML = '';
-  const optDefault = document.createElement('option');
-  optDefault.value = 'deployment';
-  optDefault.textContent = defaults.profileName + ' (default)';
+  const optPublic = document.createElement('option');
+  optPublic.value = 'public';
+  optPublic.textContent = PUBLIC_PROFILE_NAME + (def === 'public' ? ' (default)' : '');
+  select.append(optPublic);
+  if (deploymentConfigured(c)) {
+    const optDeployment = document.createElement('option');
+    optDeployment.value = 'deployment';
+    optDeployment.textContent = deploymentDefaults().profileName + (def === 'deployment' ? ' (default)' : '');
+    select.append(optDeployment);
+  }
   const optCustom = document.createElement('option');
   optCustom.value = 'custom';
   optCustom.textContent = 'Custom (advanced)…';
-  select.append(optDefault, optCustom);
+  select.append(optCustom);
 }
 
 function setTestResult(msg, kind) {
@@ -674,6 +709,13 @@ function setTestResult(msg, kind) {
   testResult.textContent = msg || '';
   testResult.classList.toggle('ok', kind === 'ok');
   testResult.classList.toggle('err', kind === 'err');
+}
+
+function updateSummary() {
+  const el = settingsElements();
+  if (el.profile.value === 'custom') return; // hidden anyway
+  const d = el.profile.value === 'public' ? publicDefaults() : deploymentDefaults();
+  el.summary.textContent = 'Using ' + d.profileName + ' — mailbox: ' + d.mailbox + ' · transit: ' + d.transit;
 }
 
 function syncCustomRowsVisibility() {
@@ -686,8 +728,9 @@ function syncCustomRowsVisibility() {
 function renderSettingsUI() {
   const el = settingsElements();
   const s = readSettings();
-  const d = deploymentDefaults();
-  el.profile.value = s.profile === 'custom' ? 'custom' : 'deployment';
+  const prof = effectiveProfile();
+  const d = prof === 'public' ? publicDefaults() : deploymentDefaults();
+  el.profile.value = prof;
   syncCustomRowsVisibility();
   const custom = el.profile.value === 'custom';
   if (custom) {
@@ -695,7 +738,7 @@ function renderSettingsUI() {
     el.transit.value = s.transitRelayUrl || '';
     el.hint.value = s.transitTcpHint || '';
   } else {
-    el.summary.textContent = 'Using ' + d.profileName + ' — mailbox: ' + d.mailbox + ' · transit: ' + d.transit;
+    updateSummary();
   }
   el.mailbox.placeholder = d.mailbox;
   el.transit.placeholder = d.transit;
@@ -722,8 +765,15 @@ function closeSettings() {
 function saveSettings() {
   const el = settingsElements();
   const selected = el.profile.value;
-  if (selected === 'deployment') {
-    try { localStorage.removeItem(SETTINGS_KEY); } catch (_) {}
+  if (selected !== 'custom') {
+    // 'public'/'deployment': remember only when it deviates from the operator
+    // default; selecting the default clears any stored override.
+    try {
+      if (selected === defaultSelection()) localStorage.removeItem(SETTINGS_KEY);
+      else localStorage.setItem(SETTINGS_KEY, JSON.stringify({ profile: selected }));
+    } catch (_) {
+      return showSettingsError('Could not save settings (browser storage unavailable)', null);
+    }
     updateSettingsDot();
     closeSettings();
     return;
@@ -751,7 +801,7 @@ function saveSettings() {
 
 function resetSettings() {
   const el = settingsElements();
-  el.profile.value = 'deployment';
+  el.profile.value = defaultSelection();
   el.mailbox.value = '';
   el.transit.value = '';
   el.hint.value = '';
@@ -799,7 +849,7 @@ async function testConnection() {
     if (!mb.ok) return showSettingsError('Mailbox server: ' + mb.error, el.mailbox);
     url = mb.value || deploymentDefaults().mailbox;
   } else {
-    url = deploymentDefaults().mailbox;
+    url = (el.profile.value === 'public' ? publicDefaults() : deploymentDefaults()).mailbox;
   }
   setTestResult('Testing ' + url + ' …');
   const result = await probeMailbox(url);
@@ -817,7 +867,7 @@ async function testConnection() {
   cancel.addEventListener('click', closeSettings);
   save.addEventListener('click', saveSettings);
   reset.addEventListener('click', resetSettings);
-  profile.addEventListener('change', syncCustomRowsVisibility);
+  profile.addEventListener('change', () => { syncCustomRowsVisibility(); updateSummary(); });
   if (el.test) el.test.addEventListener('click', testConnection);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSettings(); });
   document.addEventListener('keydown', (e) => {

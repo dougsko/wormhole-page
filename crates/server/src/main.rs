@@ -25,13 +25,23 @@ struct Args {
     #[arg(long, default_value = "static", env = "STATIC_DIR")]
     static_dir: PathBuf,
 
-    /// Upstream transit relay address (TCP)
+    /// Upstream transit relay address (TCP). Dialed by the /transit bridge;
+    /// used by the deployment (e.g. self-hosted) profile.
     #[arg(
         long,
         default_value = "transit.magic-wormhole.io:4001",
         env = "TRANSIT_RELAY"
     )]
     transit_relay: String,
+
+    /// Upstream transit relay address (TCP). Dialed by the /transit/public
+    /// bridge; used by the built-in "standard public servers" profile.
+    #[arg(
+        long,
+        default_value = "transit.magic-wormhole.io:4001",
+        env = "TRANSIT_RELAY_PUBLIC"
+    )]
+    transit_relay_public: String,
 
     /// Value for the CSP `connect-src` directive (single-quoted sources, space-separated).
     /// Default matches upstream wormhole.page; use "'self' ws: wss:" to allow any relay
@@ -60,10 +70,17 @@ struct Args {
     #[arg(long, default_value = "", env = "WORMHOLE_TRANSIT_HINT")]
     transit_hint: String,
 
-    /// Display name for the deployment default shown in the Settings UI
+    /// Display name for the deployment profile shown in the Settings UI
     /// (e.g. "wormhole.dougsko.com"). Empty = "Deployment default".
     #[arg(long, default_value = "", env = "WORMHOLE_PROFILE_NAME")]
     profile_name: String,
+
+    /// Which profile the browser preselects in the Settings UI: "public"
+    /// (standard Magic Wormhole servers) or "deployment". Empty = "deployment"
+    /// when the deployment profile is configured, else "public".
+    /// Served to the client at /config.js as defaultProfile.
+    #[arg(long, default_value = "", env = "WORMHOLE_DEFAULT_PROFILE")]
+    default_profile: String,
 
     /// Build/version identifier shown in the UI footer and served at /version.
     /// Set by the image build to the git short SHA (ARG GIT_SHA → ENV WORMHOLE_VERSION).
@@ -84,6 +101,7 @@ struct AppState {
     index_html: Arc<String>,
     service_worker: Arc<String>,
     transit_relay: Arc<String>,
+    transit_relay_public: Arc<String>,
     csp: HeaderValue,
     http_client: reqwest::Client,
     config_js: Arc<String>,
@@ -113,6 +131,7 @@ async fn main() {
         .unwrap_or_else(|e| panic!("Failed to read {}: {e}", sw_path.display()));
 
     let transit_relay = args.transit_relay;
+    let transit_relay_public = args.transit_relay_public;
     let csp = build_csp(&args.csp_connect_src).unwrap_or_else(|| {
         panic!(
             "Invalid CSP_CONNECT_SRC {:?}: must be a valid header value \
@@ -129,6 +148,7 @@ async fn main() {
         index_html: Arc::new(index_html),
         service_worker: Arc::new(service_worker),
         transit_relay: Arc::new(transit_relay.clone()),
+        transit_relay_public: Arc::new(transit_relay_public.clone()),
         csp,
         http_client,
         config_js: Arc::new(config_js),
@@ -144,6 +164,7 @@ async fn main() {
         .route("/config.js", axum::routing::get(serve_config_js))
         .route("/version", axum::routing::get(serve_version))
         .route("/transit", axum::routing::get(transit_ws))
+        .route("/transit/public", axum::routing::get(transit_ws_public))
         .route("/a/script.js", axum::routing::get(analytics_script))
         .route("/a/api/send", axum::routing::post(analytics_event))
         // SPA fallback: /receive/<code> serves index.html
@@ -160,7 +181,8 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
     tracing::info!("wormhole.page listening on {addr}");
-    tracing::info!("transit bridge → {transit_relay}");
+    tracing::info!("transit bridge (deployment) → {transit_relay}");
+    tracing::info!("transit bridge (public)      → {transit_relay_public}");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -190,11 +212,12 @@ fn js_string(s: &str) -> String {
 /// "not configured" (the client falls back to its built-in default).
 fn build_config_js(args: &Args) -> String {
     format!(
-        "window.WORMHOLE_CONFIG = {{\"mailboxUrl\":\"{}\",\"transitUrl\":\"{}\",\"transitTcpHint\":\"{}\",\"profileName\":\"{}\",\"version\":\"{}\"}};\n",
+        "window.WORMHOLE_CONFIG = {{\"mailboxUrl\":\"{}\",\"transitUrl\":\"{}\",\"transitTcpHint\":\"{}\",\"profileName\":\"{}\",\"defaultProfile\":\"{}\",\"version\":\"{}\"}};\n",
         js_string(&args.mailbox_url),
         js_string(&args.transit_url),
         js_string(&args.transit_hint),
         js_string(&args.profile_name),
+        js_string(&args.default_profile),
         js_string(&args.version),
     )
 }
@@ -378,6 +401,13 @@ async fn transit_ws(
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_transit(socket, state.transit_relay))
+}
+
+async fn transit_ws_public(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_transit(socket, state.transit_relay_public))
 }
 
 async fn handle_transit(ws: WebSocket, relay_addr: Arc<String>) {

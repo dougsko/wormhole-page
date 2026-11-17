@@ -125,9 +125,20 @@ function sanitizeFilename(name) {
 // Relay URL resolution, lowest to highest priority:
 //   built-in default  <  window.WORMHOLE_CONFIG (server-generated /config.js)
 //                      <  window.WORMHOLE_* legacy global (older operator <script> injection)
-//                      <  user setting (localStorage, Settings modal; profile 'custom' only)
+//                      <  user setting (localStorage, Settings modal)
+// Profiles:
+//   'public'      — standard Magic Wormhole infrastructure (built-in default
+//                   mailbox; transit via the /transit/public bridge whose
+//                   upstream is TRANSIT_RELAY_PUBLIC, public by default)
+//   'deployment'  — what the operator configured in /config.js (/transit bridge
+//                   by default, upstream TRANSIT_RELAY). Default selection when
+//                   nothing is stored, unless the operator sets
+//                   WORMHOLE_DEFAULT_PROFILE=public.
+//   'custom'      — user-entered URLs from the Settings modal.
 const DEFAULT_TRANSIT_RELAY_URL =
   (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit';
+const PUBLIC_TRANSIT_RELAY_URL =
+  (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/transit/public';
 const DEFAULT_MAILBOX_URL = 'wss://relay.magic-wormhole.io:443/v1';
 
 function storedSettings() {
@@ -157,21 +168,40 @@ function deploymentConfig() {
 
 const nonEmpty = v => (typeof v === 'string' && v.trim()) ? v.trim() : undefined;
 
+function selectedProfile() {
+  const s = storedSettings();
+  if (s.profile === 'custom' || s.profile === 'public' || s.profile === 'deployment') {
+    return s.profile;
+  }
+  // Nothing stored (or an unknown/legacy value): the operator's default wins.
+  const c = deploymentConfig();
+  return nonEmpty(c.defaultProfile) === 'public' ? 'public'
+    : ((nonEmpty(c.mailboxUrl) || nonEmpty(c.transitUrl) || nonEmpty(c.transitTcpHint) || nonEmpty(c.profileName)) ? 'deployment' : 'public');
+}
+
 function resolveRelayConfig() {
   const s = storedSettings();
   const c = deploymentConfig();
-  const useCustom = s.profile === 'custom';
+  const profile = selectedProfile();
+  if (profile === 'custom') {
+    return {
+      mailboxUrl: nonEmpty(s.mailboxUrl) || nonEmpty(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || DEFAULT_MAILBOX_URL,
+      transitRelayUrl: nonEmpty(s.transitRelayUrl) || nonEmpty(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || DEFAULT_TRANSIT_RELAY_URL,
+      // undefined → WASM advertises the public upstream TCP relay as the CLI peer hint
+      transitTcpHint: nonEmpty(s.transitTcpHint) || nonEmpty(c.transitTcpHint),
+    };
+  }
+  if (profile === 'public') {
+    return {
+      mailboxUrl: DEFAULT_MAILBOX_URL,
+      transitRelayUrl: PUBLIC_TRANSIT_RELAY_URL,
+      transitTcpHint: undefined,
+    };
+  }
   return {
-    mailboxUrl: useCustom
-      ? (nonEmpty(s.mailboxUrl) || nonEmpty(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || DEFAULT_MAILBOX_URL)
-      : (nonEmpty(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || DEFAULT_MAILBOX_URL),
-    transitRelayUrl: useCustom
-      ? (nonEmpty(s.transitRelayUrl) || nonEmpty(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || DEFAULT_TRANSIT_RELAY_URL)
-      : (nonEmpty(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || DEFAULT_TRANSIT_RELAY_URL),
-    // undefined → WASM advertises the public upstream TCP relay as the CLI peer hint
-    transitTcpHint: useCustom
-      ? (nonEmpty(s.transitTcpHint) || nonEmpty(c.transitTcpHint))
-      : nonEmpty(c.transitTcpHint),
+    mailboxUrl: nonEmpty(c.mailboxUrl) || window.WORMHOLE_MAILBOX_URL || DEFAULT_MAILBOX_URL,
+    transitRelayUrl: nonEmpty(c.transitUrl) || window.WORMHOLE_TRANSIT_RELAY || DEFAULT_TRANSIT_RELAY_URL,
+    transitTcpHint: nonEmpty(c.transitTcpHint),
   };
 }
 

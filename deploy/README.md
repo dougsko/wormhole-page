@@ -46,7 +46,8 @@ containing the app quadlet plus:
     Environment=WORMHOLE_MAILBOX_URL=wss://mailbox.wormhole.dougsko.com/v1
     Environment=WORMHOLE_TRANSIT_HINT=tcp://wormhole.dougsko.com:4001
     Environment=WORMHOLE_PROFILE_NAME=wormhole.dougsko.com
-    Environment=CSP_CONNECT_SRC="'self' wss://mailbox.wormhole.dougsko.com"
+    Environment=WORMHOLE_DEFAULT_PROFILE=public   # default to public infra; the dougsko.com profile is the alternative
+    Environment=CSP_CONNECT_SRC="'self' ws: wss:"
 
 (Optionally `WORMHOLE_TRANSIT_URL=` if browsers should use a non-bridge
 WebSocket transit; usually unnecessary — same-origin /transit + TRANSIT_RELAY
@@ -82,6 +83,14 @@ back to your infrastructure = selecting the default profile.
 
 Then a real transfer: send a file in one browser, receive in another,
 and confirm https://wormhole.dougsko.com shows the 🔒 badge.
+
+## Transit bridges and the two profiles
+
+The app exposes two WS→TCP bridges: `/transit` (dials `TRANSIT_RELAY`, i.e. your
+relay) for the deployment profile, and `/transit/public` (dials `TRANSIT_RELAY_PUBLIC`,
+default `transit.magic-wormhole.io:4001`) for the built-in "Standard public servers"
+profile. Visitors pick via the gear icon; `WORMHOLE_DEFAULT_PROFILE` decides which is
+preselected. The mailbox needs no bridge — Caddy proxies `/v1` straight to it.
 
 ## Gotchas
 

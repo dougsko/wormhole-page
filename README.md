@@ -144,12 +144,15 @@ wormhole-page-server [OPTIONS]
 
   --port PORT                 Listen port (default: 8080, env: PORT)
   --static-dir DIR            Static files directory (default: static/, env: STATIC_DIR)
-  --transit-relay ADDR        Upstream transit relay (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY)
+  --transit-relay ADDR        Upstream transit relay for the deployment profile (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY)
+  --transit-relay-public ADDR Upstream transit relay for the public profile (default: transit.magic-wormhole.io:4001, env: TRANSIT_RELAY_PUBLIC)
   --csp-connect-src SRC       CSP connect-src value (default: 'self' wss://relay.magic-wormhole.io:443, env: CSP_CONNECT_SRC)
   --mailbox-url URL           Deployment default mailbox relay (env: WORMHOLE_MAILBOX_URL)
   --transit-url URL           Deployment default browser transit WS URL (env: WORMHOLE_TRANSIT_URL)
   --transit-hint HINT         TCP hint advertised to CLI peers (env: WORMHOLE_TRANSIT_HINT)
-  --profile-name NAME         Display name of the deployment default in the Settings UI (env: WORMHOLE_PROFILE_NAME)
+  --profile-name NAME         Display name of the deployment profile in the Settings UI (env: WORMHOLE_PROFILE_NAME)
+  --default-profile PROFILE   Which profile the browser preselects: "public" (standard public servers)
+                              or "deployment" (env: WORMHOLE_DEFAULT_PROFILE)
 ```
 
 The `WORMHOLE_*` settings are served to the browser at **`/config.js`**, which the
@@ -183,13 +186,25 @@ for HTTPS visitors regardless of CSP.
 
 Click the **gear icon** (top-right, next to the theme toggle). Visitors choose:
 
-- **<profile name> (default)** — the deployment's configured infrastructure
-  (or, when the deployment sets nothing, the public Magic Wormhole relay).
+- **Standard public servers** (`public`) — the standard Magic Wormhole
+  infrastructure: mailbox `wss://relay.magic-wormhole.io:443/v1`, transit via the
+  same-origin `/transit/public` bridge (upstream `TRANSIT_RELAY_PUBLIC`, default
+  `transit.magic-wormhole.io:4001`). This is the default when
+  `WORMHOLE_DEFAULT_PROFILE=public`.
+- **<profile name>** (`deployment`; only shown when a deployment profile is
+  configured) — the deployment's configured infrastructure (or, when the deployment
+  sets nothing, the public Magic Wormhole relay).
 - **Custom (advanced)…** — free-form **Mailbox (rendezvous) server**,
   **Transit relay (WebSocket)** and an optional **Transit TCP hint** (the TCP relay
   address advertised to CLI peers, e.g. `tcp://transit.example.com:4001`; defaults to
   the public upstream relay). A **Test connection** button opens a WebSocket to the
   effective mailbox URL and reports whether the handshake succeeds.
+
+Which option is preselected is controlled by `WORMHOLE_DEFAULT_PROFILE` (`public` or
+`deployment`; empty = `deployment` when the deployment profile is configured, else
+`public`); the other of the two is offered as the alternative. The browser transits
+through a same-origin bridge either way — `/transit` for the deployment profile
+(upstream `TRANSIT_RELAY`), `/transit/public` for the public one.
 
 Both relay URLs accept `ws://` and `wss://` URLs and are validated on save (empty field
 = deployment default). Settings are stored in that browser's `localStorage`
@@ -199,13 +214,13 @@ icon indicates custom relays are active.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| Mailbox server | `wss://relay.magic-wormhole.io:443/v1` | Mailbox (rendezvous) relay for SPAKE2 key exchange |
-| Transit relay | `wss://<host>/transit` | WebSocket URL for the transit relay bridge |
+| Mailbox server | `wss://relay.magic-wormhole.io:443/v1` (public profile) / `WORMHOLE_MAILBOX_URL` (deployment profile) | Mailbox (rendezvous) relay for SPAKE2 key exchange |
+| Transit relay | `wss://<host>/transit/public` (public) / `wss://<host>/transit` (deployment) | WebSocket URL for the transit relay bridge |
 | Transit TCP hint | `tcp://transit.magic-wormhole.io:4001` (upstream) | TCP relay hint advertised to CLI peers |
 
 Resolution order (lowest → highest priority): built-in default → `/config.js` (operator
-env) → `window.WORMHOLE_*` legacy `<script>` injection (still honored) → the custom
-profile in `localStorage`.
+env, incl. `defaultProfile`) → `window.WORMHOLE_*` legacy `<script>` injection (still
+honored) → the profile chosen in `localStorage` (`public` / `deployment` / `custom`).
 
 > **Note (custom transit relays):** the TCP hint advertised to CLI peers is fully
 > configurable (`WORMHOLE_TRANSIT_HINT` / the custom profile's TCP hint field). With
