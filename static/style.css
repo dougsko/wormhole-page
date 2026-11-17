@@ -593,8 +593,11 @@ a:visited { color: var(--accent); }
 .settings-test-result {
   font-size: 12px;
   color: var(--text-muted);
-  word-break: break-word;
+  line-height: 1.5;
+  margin: 10px 0 0;
+  overflow-wrap: anywhere; /* long unbroken URLs must not overflow the modal */
 }
+.settings-test-result:empty { display: none; }
 .settings-test-result.ok { color: var(--success, #2f9e44); }
 .settings-test-result.err { color: var(--error); }
 

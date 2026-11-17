@@ -185,6 +185,16 @@ test.describe('Settings modal', () => {
     await expect(page.locator('#settings-dot')).toBeHidden();
   });
 
+  test('test connection result renders on a single line, not one letter per line', async ({ page }) => {
+    await openCustom(page);
+    await page.fill('#settings-mailbox-url', 'ws://127.0.0.1:1/unreachable');
+    await page.click('#settings-test');
+    const result = page.locator('#settings-test-result');
+    await expect(result).toHaveClass(/err/, { timeout: 10000 });
+    const box = await result.boundingBox();
+    expect(box?.width ?? 0).toBeGreaterThan(100);
+  });
+
   test('test connection reports failure for an unreachable relay', async ({ page }) => {
     await openCustom(page);
     await page.fill('#settings-mailbox-url', 'ws://127.0.0.1:1/unreachable');
