@@ -4,7 +4,55 @@ End-to-end encrypted file transfer in the browser. Drop a file, share the code, 
 
 Built on [Magic Wormhole](https://magic-wormhole.readthedocs.io/) — fully interoperable with the standard `wormhole` and `wormhole-rs` CLIs. Your files never touch the server.
 
-**Live at [wormhole.page](https://wormhole.page)**
+> **Fork notice.** This repository is an experimental fork of
+> [lucamartinetti/wormhole-page](https://github.com/lucamartinetti/wormhole-page),
+> the project behind [wormhole.page](https://wormhole.page). It adds features
+> upstream does not have — see [Fork: experimental features](#fork-experimental-features).
+> The wire protocol is unchanged, so everything still interoperates with standard
+> Magic Wormhole clients, and this fork is not affiliated with upstream.
+
+## Fork: experimental features
+
+Everything below exists only in this fork. It may change or disappear without
+notice. Items marked † are built on a forked wasm client
+([dougsko/magic-wormhole.rs](https://github.com/dougsko/magic-wormhole.rs),
+branch `web-text-receive`) rather than upstream magic-wormhole.rs.
+
+1. **Send text messages**† — click **Send text** (next to *Send a folder*), type or
+   paste, and hit **Send text**. The receiving browser renders the message inline
+   with Copy / Download buttons; command-line peers receive a regular `message.txt`
+   file. Note this is an in-memory text file, not the `wormhole send --text` offer —
+   native text interop with the Python client is not implemented (see `TODOS.md`).
+2. **Inline text receive**† — any small received file that looks like UTF-8 text
+   (`.txt`, `.md`, `.json`, `.csv`, …, up to 512 KB) is displayed inline in the
+   browser instead of being downloaded. Larger or non-text offers fall back to the
+   normal file path.
+3. **Per-user relay overrides** — the gear icon (top-right) opens a Settings modal.
+   Visitors can choose between standard public Magic Wormhole servers and the
+   deployment's configured profile — or enter free-form custom mailbox / transit /
+   TCP-hint URLs, with a **Test connection** button that checks the mailbox
+   handshake. Choices are stored in the browser's `localStorage` only and never
+   reach the server. A dot on the gear indicates overrides are active.
+4. **Public-by-default profile selection** — this fork preselects standard public
+   Magic Wormhole infrastructure by default and offers the deployment profile as the
+   alternative (upstream has no profile system at all). Which profile preselects is
+   operator-configurable (`WORMHOLE_DEFAULT_PROFILE`).
+5. **Operator-configurable infrastructure** — the server generates `/config.js` at
+   startup from environment variables (`WORMHOLE_MAILBOX_URL`, `WORMHOLE_TRANSIT_URL`,
+   `WORMHOLE_TRANSIT_HINT`, `WORMHOLE_PROFILE_NAME`, `WORMHOLE_DEFAULT_PROFILE`,
+   `CSP_CONNECT_SRC`). The same image works everywhere; self-hosters set env vars.
+   The Content-Security-Policy `connect-src` is operator-tunable and defaults to the
+   upstream-identical `'self' wss://relay.magic-wormhole.io:443`.
+6. **Plain-HTTP operation** — the wasm module loads on insecure (plain-HTTP) contexts
+   and clipboard copy falls back when the Clipboard API is unavailable, so the app
+   works behind bare-HTTP deployments (e.g. tailnets) where upstream would not.
+7. **Build version + `/version`** — the footer shows the build version (click to
+   copy), and the server exposes `/version`, making deployed builds verifiable and
+   auto-update audits possible.
+8. **Packaging** — multi-arch (`linux/amd64` + `linux/arm64`) images are published to
+   GHCR on every push to `main` and every `v*` tag; a ready-made
+   [Quadlet](https://docs.quadlet.dev/en/latest/) unit runs the image under systemd +
+   Podman. Fly.io deployment was removed.
 
 ## How it works
 
@@ -38,6 +86,8 @@ The server **cannot** decrypt your files. It sees only encrypted transit traffic
 Open [wormhole.page](https://wormhole.page) in two tabs (or two devices). Send in one, receive in the other.
 
 ### Send text
+
+*(fork feature — see [above](#fork-experimental-features))*
 
 Click **Send text** (next to *Send a folder*), type or paste a message, and hit **Send text**.
 The receiver sees the message inline (with Copy / Download buttons) instead of a file
@@ -131,8 +181,8 @@ podman run -p 8080:8080 wormhole-page
 Requires Rust 1.94+ and wasm-pack.
 
 ```bash
-git clone https://github.com/lucamartinetti/wormhole-page.git
-cd wormhole-web
+git clone https://github.com/dougsko/wormhole-page.git
+cd wormhole-page
 make build
 make run
 ```
@@ -183,6 +233,8 @@ HTTPS pages browsers block `ws://` entirely (mixed content) — only `wss://` re
 for HTTPS visitors regardless of CSP.
 
 #### Client-side overrides (the gear icon)
+
+*(fork feature — see [above](#fork-experimental-features))*
 
 Click the **gear icon** (top-right, next to the theme toggle). Visitors choose:
 
